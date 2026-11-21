@@ -10,8 +10,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -19,97 +22,119 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.audio.*
 import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.viewmodel.BijoyViewModel
+import kotlin.math.abs
 
 /**
- * Main Pioneer-style Dual-Deck DJ Controller optimized for 16:9 Landscape Studio on launch,
- * with responsive support for compact/portrait widths and Fullscreen Mixer Mode.
+ * BIJOY DJ — Exact Reference-Matched Dual-Deck + 4-Channel Central Mixer Console:
+ * - Left Deck A & Right Deck B:
+ *   Top Loop Bar (IN, OUT, 1/2, 1, 2, 4, 8, 16)
+ *   Second Row (RELOOP/EXIT, Jog Mode Circle, PITCH BEND -/+, KEY LOCK)
+ *   Center: Left Utility Knobs | Large Brushed Metallic Jog Wheel (Blue RGB ring + DJ emblem) | Right Pitch/Tempo Slider
+ *   Bottom: Mode Selector (HOT CUE | SAMPLER | ROLL | SLICER | LOOP | CUE LP) + 2x4 Large Colored Performance Pads
+ * - Central 4-Channel Mixer ("BIJOY DJ"):
+ *   Left Utility Column | Channels 1, 2, 3, 4 (Meter, GAIN, TREBLE, MID, BASS, FILTER, CUE, Volume Fader) | Right Master/Meter Column
+ *   Bottom: Horizontal Crossfader (< A | B >)
  */
 @Composable
 fun DjControllerConsole(
     deckA: DeckState,
     deckB: DeckState,
     mixer: MixerState,
+    mixerScale: Float,
     isFullscreenMixer: Boolean,
     viewModel: BijoyViewModel,
     modifier: Modifier = Modifier
 ) {
+    val sfxPads by viewModel.sfxPads.collectAsStateWithLifecycle()
+
     BoxWithConstraints(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFF151B28), Color(0xFF0A0D15), Color(0xFF101520))
+                    listOf(Color(0xFF141A27), Color(0xFF070A12), Color(0xFF0E131E))
                 )
             )
-            .border(1.5.dp, Color(0xFF2A354D), RoundedCornerShape(10.dp))
-            .padding(if (isFullscreenMixer) 6.dp else 4.dp)
+            .border(1.4.dp, Color(0xFF2B364F), RoundedCornerShape(10.dp))
+            .padding(if (isFullscreenMixer) 4.dp else 3.dp)
     ) {
-        val isWide = maxWidth >= 520.dp
+        val isWide = maxWidth >= 560.dp
+        val clampedMixerScale = mixerScale.coerceIn(0.85f, 1.45f)
 
         if (isWide) {
-            // 16:9 Widescreen Pioneer Console: [Deck A | DJM-A9 BIJOY MIXER | Deck B]
             Row(
                 modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                DeckHardwarePanel(
+                // LEFT DECK A
+                BijoyDeckConsole(
                     deck = deckA,
                     accent = DeckACyan,
+                    isActiveDeck = mixer.activeDeck == DeckId.A,
                     isFullscreen = isFullscreenMixer,
+                    sfxPads = sfxPads,
                     viewModel = viewModel,
                     modifier = Modifier
-                        .weight(1.02f)
+                        .weight(1.0f)
                         .fillMaxHeight()
                 )
 
-                CentralMixerPanel(
+                // CENTRAL 4-CHANNEL MIXER
+                FourChannelCentralMixer(
                     deckA = deckA,
                     deckB = deckB,
                     mixer = mixer,
                     isFullscreen = isFullscreenMixer,
                     viewModel = viewModel,
                     modifier = Modifier
-                        .weight(1.26f)
+                        .weight(1.30f * clampedMixerScale)
                         .fillMaxHeight()
                 )
 
-                DeckHardwarePanel(
+                // RIGHT DECK B
+                BijoyDeckConsole(
                     deck = deckB,
-                    accent = DeckBRed,
+                    accent = DeckBPink,
+                    isActiveDeck = mixer.activeDeck == DeckId.B,
                     isFullscreen = isFullscreenMixer,
+                    sfxPads = sfxPads,
                     viewModel = viewModel,
                     modifier = Modifier
-                        .weight(1.02f)
+                        .weight(1.0f)
                         .fillMaxHeight()
                 )
             }
         } else {
-            // Portrait Fallback: Scrollable Deck A -> DJM-A9 Mixer -> Deck B
+            // Responsive Portrait Stack without losing any controls
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                DeckHardwarePanel(
+                BijoyDeckConsole(
                     deck = deckA,
                     accent = DeckACyan,
+                    isActiveDeck = mixer.activeDeck == DeckId.A,
                     isFullscreen = isFullscreenMixer,
+                    sfxPads = sfxPads,
                     viewModel = viewModel,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(240.dp)
+                        .height(340.dp)
                 )
-                CentralMixerPanel(
+                FourChannelCentralMixer(
                     deckA = deckA,
                     deckB = deckB,
                     mixer = mixer,
@@ -117,16 +142,18 @@ fun DjControllerConsole(
                     viewModel = viewModel,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(270.dp)
+                        .height(340.dp)
                 )
-                DeckHardwarePanel(
+                BijoyDeckConsole(
                     deck = deckB,
-                    accent = DeckBRed,
+                    accent = DeckBPink,
+                    isActiveDeck = mixer.activeDeck == DeckId.B,
                     isFullscreen = isFullscreenMixer,
+                    sfxPads = sfxPads,
                     viewModel = viewModel,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(240.dp)
+                        .height(340.dp)
                 )
             }
         }
@@ -135,10 +162,12 @@ fun DjControllerConsole(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun DeckHardwarePanel(
+private fun BijoyDeckConsole(
     deck: DeckState,
     accent: Color,
+    isActiveDeck: Boolean,
     isFullscreen: Boolean,
+    sfxPads: List<SfxPadUi>,
     viewModel: BijoyViewModel,
     modifier: Modifier = Modifier
 ) {
@@ -148,73 +177,198 @@ private fun DeckHardwarePanel(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF0D111B))
-            .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
-            .padding(4.dp),
+            .background(Color(0xFF0A0D16))
+            .border(
+                width = if (isActiveDeck) 1.3.dp else 0.8.dp,
+                color = if (isActiveDeck) accent.copy(alpha = 0.65f) else MetalBorder,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .padding(3.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // Row 1: Deck Mode Toggles
+        // 1. TOP LOOP CONTROL BAR ABOVE JOG WHEEL: Yellow IN | OUT | 1/2 | 1 | 2 | 4 | 8 | 16
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            HardwareLedButton("KEY", deck.keyLock, accent, "${tagPrefix}_key_lock", Modifier.weight(1f)) {
-                engine.toggleKeyLock(deck.deckId)
-            }
-            HardwareLedButton("SCR", deck.scratchMode, DeckBOrange, "${tagPrefix}_scratch", Modifier.weight(1f)) {
-                engine.toggleScratchMode(deck.deckId)
-            }
-            HardwareLedButton("SLIP", deck.slipMode, LedPurple, "${tagPrefix}_slip", Modifier.weight(1f)) {
-                engine.toggleSlipMode(deck.deckId)
-            }
-            HardwareLedButton(
-                text = if (deck.activeEffect == DjEffectType.NONE) "FX" else deck.activeEffect.displayName.take(4).uppercase(),
-                active = deck.activeEffect != DjEffectType.NONE,
-                activeColor = LedPurple,
-                testTagName = "${tagPrefix}_fx_cycle",
-                modifier = Modifier.weight(1f)
-            ) {
-                val all = DjEffectType.entries
-                val next = all[(all.indexOf(deck.activeEffect) + 1) % all.size]
-                engine.setDeckEffect(deck.deckId, next)
-            }
-        }
-
-        // Row 2: Loop Controls Strip
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            HardwareLedButton("IN", deck.loopInMs != null, LedAmber, "${tagPrefix}_loop_in", Modifier.weight(1f)) {
+            YellowHardwareBtn("IN", deck.loopInMs != null, "${tagPrefix}_loop_in", Modifier.weight(1f)) {
                 engine.setLoopIn(deck.deckId)
             }
-            HardwareLedButton("OUT", deck.loopActive, LedAmber, "${tagPrefix}_loop_out", Modifier.weight(1f)) {
+            YellowHardwareBtn("OUT", deck.loopActive, "${tagPrefix}_loop_out", Modifier.weight(1f)) {
                 engine.setLoopOut(deck.deckId)
             }
-            HardwareLedButton("EXIT", false, DeckBRed, "${tagPrefix}_loop_exit", Modifier.weight(1f)) {
-                engine.exitLoop(deck.deckId)
-            }
-            HardwareLedButton(
-                "${deck.autoLoopBeats.toInt()}B LP",
-                deck.loopActive,
-                LedGreen,
-                "${tagPrefix}_auto_loop",
-                Modifier.weight(1.25f)
-            ) {
-                engine.toggleAutoLoop(deck.deckId, deck.autoLoopBeats)
+            val loopBeats = listOf(
+                "1/2" to 0.5f,
+                "1" to 1f,
+                "2" to 2f,
+                "4" to 4f,
+                "8" to 8f,
+                "16" to 16f
+            )
+            loopBeats.forEach { (label, beats) ->
+                val active = deck.loopActive && abs(deck.autoLoopBeats - beats) < 0.01f
+                Box(
+                    modifier = Modifier
+                        .weight(0.85f)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(if (active) LedAmber.copy(alpha = 0.35f) else Color(0xFF151C2B))
+                        .border(0.8.dp, if (active) LedAmber else MetalBorder, RoundedCornerShape(3.dp))
+                        .clickable { engine.toggleAutoLoop(deck.deckId, beats) }
+                        .testTag("${tagPrefix}_loop_len_${label.replace("/", "_")}")
+                        .padding(vertical = 3.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        color = if (active) Color.White else TextPrimary,
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = JetBrainsMonoFontFamily,
+                        maxLines = 1
+                    )
+                }
             }
         }
 
-        // Row 3: Large Metallic Jog Wheel + Pitch/Tempo Slider
+        // 2. SECOND ROW ABOVE JOG WHEEL: RELOOP/EXIT | Orange Jog Mode Circle | PITCH BEND (- / +) | KEY LOCK
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .padding(vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(vertical = 1.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (deck.loopActive) LedGreen.copy(alpha = 0.22f) else Color(0xFF141B29))
+                    .border(0.8.dp, if (deck.loopActive) LedGreen else MetalBorder, RoundedCornerShape(4.dp))
+                    .clickable { engine.toggleReloop(deck.deckId) }
+                    .testTag("${tagPrefix}_reloop_exit")
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = if (deck.loopActive) "EXIT" else "RELOOP",
+                    color = if (deck.loopActive) LedGreen else TextPrimary,
+                    fontSize = 6.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = JetBrainsMonoFontFamily
+                )
+                Text("/ EXIT", color = TextMuted, fontSize = 5.5.sp, fontFamily = JetBrainsMonoFontFamily)
+            }
+
+            // Center Orange Circular Jog Mode Switch (Vinyl / CDJ / Search)
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF28190A))
+                    .border(1.5.dp, DeckBOrange, CircleShape)
+                    .clickable { engine.cycleJogMode(deck.deckId) }
+                    .testTag("${tagPrefix}_jog_mode_btn"),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = "Jog Mode: ${deck.jogMode.displayName}", tint = DeckBOrange, modifier = Modifier.size(14.dp))
+            }
+
+            // Pitch Bend (- / +) + Key Lock
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("PITCH BEND", color = TextSecondary, fontSize = 5.5.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        PitchBendPill("-", "${tagPrefix}_bend_minus") {
+                            engine.setPitchPercent(deck.deckId, deck.pitchPercent - 0.5f)
+                        }
+                        PitchBendPill("+", "${tagPrefix}_bend_plus") {
+                            engine.setPitchPercent(deck.deckId, deck.pitchPercent + 0.5f)
+                        }
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(if (deck.keyLock) DeckBOrange.copy(alpha = 0.25f) else Color(0xFF141B29))
+                        .border(1.3.dp, if (deck.keyLock) DeckBOrange else MetalBorder, CircleShape)
+                        .clickable { engine.toggleKeyLock(deck.deckId) }
+                        .testTag("${tagPrefix}_key_lock"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Lock, contentDescription = "Key Lock", tint = if (deck.keyLock) DeckBGold else TextSecondary, modifier = Modifier.size(12.dp))
+                }
+            }
+        }
+
+        // 3. MIDDLE SECTION: Left Mini Knobs/Cue | LARGE METALLIC JOG WHEEL | Right Pitch/Tempo Slider
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            // Left Transport & Utility Strip beside Jog Wheel: Round PLAY, Round CUE, Round RESET + SLIP + FILT
+            Column(
+                modifier = Modifier
+                    .width(if (isFullscreen) 42.dp else 37.dp)
+                    .fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceEvenly
+            ) {
+                RoundHardwareTransportBtn(
+                    isCircleIcon = true,
+                    isPlaying = deck.isPlaying,
+                    label = if (deck.isPlaying) "PAUSE" else "PLAY",
+                    accentColor = LedGreen,
+                    active = deck.isPlaying,
+                    size = 28.dp,
+                    tag = "${tagPrefix}_deck_play_btn"
+                ) { engine.togglePlayPause(deck.deckId) }
+
+                RoundHardwareTransportBtn(
+                    isCircleIcon = false,
+                    isPlaying = false,
+                    label = "CUE",
+                    accentColor = DeckBOrange,
+                    active = deck.headphoneCue,
+                    size = 24.dp,
+                    tag = "${tagPrefix}_deck_cue_btn"
+                ) { engine.triggerCue(deck.deckId) }
+
+                RoundHardwareTransportBtn(
+                    isCircleIcon = false,
+                    isPlaying = false,
+                    label = "RST",
+                    accentColor = accent,
+                    active = deck.positionMs == 0L && !deck.isPlaying,
+                    size = 22.dp,
+                    icon = BijoyIcons.RestartAlt,
+                    tag = "${tagPrefix}_deck_reset_btn"
+                ) { engine.resetDeckPlayback(deck.deckId) }
+
+                MiniDeckBadge(
+                    text = "SLIP",
+                    active = deck.slipMode,
+                    color = LedPurple,
+                    tag = "${tagPrefix}_slip_btn"
+                ) { engine.toggleSlipMode(deck.deckId) }
+
+                RotaryHardwareKnob(
+                    label = "FILT",
+                    value = deck.filterCutoff,
+                    accentColor = accent,
+                    knobSize = 26.dp,
+                    testTagName = "${tagPrefix}_mini_filter_knob",
+                    onValueChange = { engine.updateDeckEq(deck.deckId, filterCutoff = it) }
+                )
+            }
+
+            // Center LARGE Metallic Jog Wheel
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -228,114 +382,346 @@ private fun DeckHardwarePanel(
                     artworkResName = deck.artworkResName,
                     bpm = deck.effectiveBpm,
                     deckTag = tagPrefix,
+                    jogMode = deck.jogMode,
                     onTouchStart = { engine.onJogTouchStart(deck.deckId) },
                     onDragAngle = { delta -> engine.onJogDrag(deck.deckId, delta) },
                     onTouchEnd = { engine.onJogTouchEnd(deck.deckId) },
-                    modifier = Modifier.fillMaxHeight(if (isFullscreen) 0.96f else 0.92f)
+                    modifier = Modifier.fillMaxHeight(0.98f)
                 )
             }
 
+            // Right Pitch & Tempo Slider Column (±6/10/16/50/100%, Slider, TEMPO Reset)
             Column(
                 modifier = Modifier
-                    .width(if (isFullscreen) 38.dp else 33.dp)
+                    .width(if (isFullscreen) 40.dp else 35.dp)
                     .fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = String.format("%+.1f%%", deck.pitchPercent),
-                    color = accent,
-                    fontSize = 7.sp,
-                    fontFamily = JetBrainsMonoFontFamily,
-                    fontWeight = FontWeight.Bold
-                )
+                // Pitch Range Tap Badge (-50% / ±50% etc.)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF0E1523))
+                        .clickable { engine.cyclePitchRange(deck.deckId) }
+                        .testTag("${tagPrefix}_pitch_range_btn")
+                        .padding(vertical = 1.dp)
+                ) {
+                    Text(
+                        text = if (abs(deck.pitchPercent) > 0.2f) String.format("%+.0f%%", deck.pitchPercent) else "-${deck.pitchRangePercent.toInt()}%",
+                        color = accent,
+                        fontSize = 6.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = JetBrainsMonoFontFamily,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = "±${deck.pitchRangePercent.toInt()}%",
+                        color = TextMuted,
+                        fontSize = 5.5.sp,
+                        fontFamily = JetBrainsMonoFontFamily
+                    )
+                }
+
+                val range = deck.pitchRangePercent.coerceAtLeast(6f)
                 VerticalHardwareFader(
-                    value = ((deck.pitchPercent + 16f) / 32f).coerceIn(0f, 1f),
+                    value = ((deck.pitchPercent + range) / (range * 2f)).coerceIn(0f, 1f),
                     accentColor = accent,
                     testTagName = "${tagPrefix}_pitch_fader",
                     centerDetent = true,
                     modifier = Modifier.weight(1f)
                 ) { norm ->
-                    val pct = (norm * 32f) - 16f
-                    engine.setPitchPercent(deck.deckId, pct)
+                    engine.setPitchPercent(deck.deckId, (norm * (range * 2f)) - range)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    MiniPitchBendBtn("-", "${tagPrefix}_bend_minus") {
-                        engine.setPitchPercent(deck.deckId, deck.pitchPercent - 0.5f)
+
+                // Tempo Reset + Micro +/- Pitch buttons
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Color(0xFF181014))
+                            .border(0.7.dp, LedRed.copy(alpha = 0.7f), RoundedCornerShape(3.dp))
+                            .clickable { engine.resetTempo(deck.deckId) }
+                            .testTag("${tagPrefix}_tempo_reset")
+                            .padding(vertical = 2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("TEMPO", color = Color.White, fontSize = 5.5.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
                     }
-                    MiniPitchBendBtn("+", "${tagPrefix}_bend_plus") {
-                        engine.setPitchPercent(deck.deckId, deck.pitchPercent + 0.5f)
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        MiniPitchStepBtn("-", "${tagPrefix}_tempo_minus") {
+                            engine.setPitchPercent(deck.deckId, deck.pitchPercent - 1f)
+                        }
+                        MiniPitchStepBtn("+", "${tagPrefix}_tempo_plus") {
+                            engine.setPitchPercent(deck.deckId, deck.pitchPercent + 1f)
+                        }
                     }
                 }
             }
         }
 
-        // Row 4: 4 Colorful RGB Hot Cue Performance Pads
-        val padColors = listOf(LedRed, LedAmber, DeckACyan, LedPurple)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        // 4. BOTTOM PERFORMANCE PAD SECTION (Mode Selector + 2x4 Large Colored Pads)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF070A11))
+                .border(0.8.dp, MetalBorder.copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                .padding(3.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            deck.hotCues.forEachIndexed { idx, cue ->
-                val pColor = padColors.getOrElse(idx) { accent }
-                val isSet = cue.positionMs != null
+            // Mode Selector Row: HOT CUE | SAMPLER | ROLL | SLICER (+ LOOP / CUE LOOP toggle)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                val primaryModes = listOf(
+                    PerformancePadMode.HOT_CUE,
+                    PerformancePadMode.SAMPLER,
+                    PerformancePadMode.ROLL,
+                    PerformancePadMode.SLICER
+                )
+                primaryModes.forEach { mode ->
+                    val selected = deck.padMode == mode
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(if (selected) accent.copy(alpha = 0.30f) else Color(0xFF131926))
+                            .border(0.8.dp, if (selected) accent else MetalBorder, RoundedCornerShape(3.dp))
+                            .clickable { engine.setPadMode(deck.deckId, mode) }
+                            .testTag("${tagPrefix}_mode_${mode.name.lowercase()}")
+                            .padding(vertical = 2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = mode.displayName,
+                            color = if (selected) Color.White else TextSecondary,
+                            fontSize = 5.8.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            maxLines = 1
+                        )
+                    }
+                }
+                // Cycle between LOOP & CUE LOOP
+                val loopSelected = deck.padMode == PerformancePadMode.LOOP || deck.padMode == PerformancePadMode.CUE_LOOP
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(if (isFullscreen) 30.dp else 24.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(if (isSet) pColor.copy(alpha = 0.38f) else Color(0xFF141B2B))
-                        .border(
-                            width = if (isSet) 1.5.dp else 1.dp,
-                            color = if (isSet) pColor else pColor.copy(alpha = 0.45f),
-                            shape = RoundedCornerShape(5.dp)
-                        )
-                        .testTag("${tagPrefix}_hot_cue_${idx + 1}")
-                        .combinedClickable(
-                            onClick = { viewModel.onHotCuePress(deck.deckId, idx) },
-                            onLongClick = { viewModel.onHotCueClear(deck.deckId, idx) }
-                        ),
+                        .weight(0.85f)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(if (loopSelected) LedAmber.copy(alpha = 0.30f) else Color(0xFF131926))
+                        .border(0.8.dp, if (loopSelected) LedAmber else MetalBorder, RoundedCornerShape(3.dp))
+                        .clickable {
+                            val next = if (deck.padMode == PerformancePadMode.LOOP) PerformancePadMode.CUE_LOOP else PerformancePadMode.LOOP
+                            engine.setPadMode(deck.deckId, next)
+                        }
+                        .testTag("${tagPrefix}_mode_loop_cueloop")
+                        .padding(vertical = 2.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (isSet) "HC ${idx + 1}" else "SET ${idx + 1}",
-                        color = if (isSet) Color.White else pColor.copy(alpha = 0.85f),
-                        fontSize = 8.sp,
+                        text = if (deck.padMode == PerformancePadMode.CUE_LOOP) "CUE LP" else "LOOP",
+                        color = if (loopSelected) Color.White else TextSecondary,
+                        fontSize = 5.8.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = JetBrainsMonoFontFamily
+                        fontFamily = JetBrainsMonoFontFamily,
+                        maxLines = 1
                     )
+                }
+            }
+
+            // 2 ROWS x 4 COLUMNS PERFORMANCE PADS (Top: Red, Orange, Blue, Yellow | Bottom: Green, Purple, Cyan, Violet)
+            val padColors = listOf(
+                LedRed,              // Pad 1 - Red
+                DeckBOrange,         // Pad 2 - Orange
+                DeckABlue,           // Pad 3 - Blue
+                DeckBGold,           // Pad 4 - Yellow
+                LedGreen,            // Pad 5 - Green
+                LedPurple,           // Pad 6 - Purple
+                DeckACyan,           // Pad 7 - Cyan
+                Color(0xFF9C27B0)    // Pad 8 - Violet
+            )
+
+            val padH = if (isFullscreen) 26.dp else 22.dp
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                for (row in 0..1) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        for (col in 0..3) {
+                            val idx = row * 4 + col
+                            val pCol = padColors[idx]
+                            val (label, isActive) = padLabelAndState(deck, idx, sfxPads)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(padH)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (isActive) pCol else pCol.copy(alpha = 0.72f))
+                                    .border(
+                                        width = if (isActive) 1.5.dp else 0.8.dp,
+                                        color = if (isActive) Color.White else pCol,
+                                        shape = RoundedCornerShape(4.dp)
+                                    )
+                                    .combinedClickable(
+                                        onClick = { viewModel.onPerformancePadPress(deck.deckId, idx) },
+                                        onLongClick = { viewModel.onPerformancePadLongPress(deck.deckId, idx) }
+                                    )
+                                    .testTag("${tagPrefix}_perf_pad_${idx + 1}"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (idx == 3 || idx == 4 || idx == 6) Color(0xFF070A12) else Color.White,
+                                    fontSize = 6.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 }
 
+private fun padLabelAndState(deck: DeckState, idx: Int, sfxPads: List<SfxPadUi>): Pair<String, Boolean> {
+    return when (deck.padMode) {
+        PerformancePadMode.HOT_CUE -> {
+            val cue = deck.hotCues.getOrNull(idx)
+            val set = cue?.positionMs != null
+            (if (set) "HC ${idx + 1}●" else "HC ${idx + 1}") to set
+        }
+        PerformancePadMode.SAMPLER -> {
+            val s = sfxPads.getOrNull(idx)
+            (s?.label?.take(5) ?: "S${idx + 1}") to (s?.isPlaying == true)
+        }
+        PerformancePadMode.ROLL -> {
+            val labels = listOf("1/2", "1", "2", "4", "8", "16", "1/4", "1/8")
+            val beats = listOf(0.5f, 1f, 2f, 4f, 8f, 16f, 0.25f, 0.125f)
+            val active = deck.loopActive && deck.activeRollBeats == beats[idx]
+            labels[idx] to active
+        }
+        PerformancePadMode.SLICER -> {
+            "SL ${idx + 1}" to (deck.activeSlicerIndex == idx)
+        }
+        PerformancePadMode.LOOP -> {
+            val labels = listOf("L1/2", "L1", "L2", "L4", "L8", "L16", "L1/4", "L32")
+            val beats = listOf(0.5f, 1f, 2f, 4f, 8f, 16f, 0.25f, 32f)
+            labels[idx] to (deck.loopActive && abs(deck.autoLoopBeats - beats[idx]) < 0.01f)
+        }
+        PerformancePadMode.CUE_LOOP -> {
+            val set = deck.hotCues.getOrNull(idx)?.positionMs != null
+            "CL ${idx + 1}" to (set && deck.loopActive)
+        }
+    }
+}
+
 @Composable
-private fun MiniPitchBendBtn(symbol: String, tag: String, onClick: () -> Unit) {
+private fun YellowHardwareBtn(
+    text: String,
+    active: Boolean,
+    tag: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(if (active) CrownGold else Color(0xFFD4A017))
+            .border(0.8.dp, Color(0xFFFFEE58), RoundedCornerShape(3.dp))
+            .clickable { onClick() }
+            .testTag(tag)
+            .padding(vertical = 3.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = Color(0xFF0A0D14),
+            fontSize = 7.sp,
+            fontWeight = FontWeight.ExtraBold,
+            fontFamily = JetBrainsMonoFontFamily,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun PitchBendPill(symbol: String, tag: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(15.dp)
+            .width(20.dp)
+            .height(14.dp)
             .clip(RoundedCornerShape(3.dp))
-            .background(Color(0xFF1B2436))
-            .border(0.8.dp, MetalBorder, RoundedCornerShape(3.dp))
+            .background(if (symbol == "+") LedRed.copy(alpha = 0.85f) else Color(0xFF1F293D))
+            .border(0.7.dp, MetalBorder, RoundedCornerShape(3.dp))
             .clickable { onClick() }
             .testTag(tag),
         contentAlignment = Alignment.Center
     ) {
-        Text(symbol, color = TextPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        Text(symbol, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+    }
+}
+
+@Composable
+private fun MiniDeckBadge(
+    text: String,
+    active: Boolean,
+    color: Color,
+    tag: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(3.dp))
+            .background(if (active) color.copy(alpha = 0.28f) else Color(0xFF131A29))
+            .border(0.7.dp, if (active) color else MetalBorder, RoundedCornerShape(3.dp))
+            .clickable { onClick() }
+            .testTag(tag)
+            .padding(vertical = 2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, color = Color.White, fontSize = 6.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily, maxLines = 1)
+    }
+}
+
+@Composable
+private fun MiniPitchStepBtn(symbol: String, tag: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(15.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(Color(0xFF1A2234))
+            .border(0.6.dp, MetalBorder, RoundedCornerShape(3.dp))
+            .clickable { onClick() }
+            .testTag(tag),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(symbol, color = TextPrimary, fontSize = 8.sp, fontWeight = FontWeight.Bold)
     }
 }
 
 /**
- * Pioneer DJM-A9 Inspired Central BIJOY MIXER:
- * - Left Column: SOUND COLOR FX (SPACE, ECHO, SWEEP, NOISE, CRUSH, FILTER + PARAMETER knob)
- * - Center Columns: CH 1 (Deck A) & CH 2 (Deck B) with TRIM/GAIN, HI, MID, LOW, Metallic COLOR knob,
- *   Per-Channel LED VU Meter, Orange CUE button, Blue BEAT FX assign button, and Channel Volume Fader
- * - Right Column: MASTER LEVEL knob, Dual Stereo MASTER VU Meters, BEAT FX OLED Display,
- *   Beat Ratio buttons (1/2, 1, 2), LEVEL/DEPTH knob, and glowing blue Beat FX ON/OFF button.
+ * Exact Reference-Matched 4-Channel Central Mixer ("BIJOY DJ"):
+ * - Left & Right Flanking Utility Strips (Headphone Vol/Mix, Master Vol, CUE, Master LED Meter, FX Depth, Assign)
+ * - 4 Independent Vertical Channel Strips (Channels 1, 2, 3, 4):
+ *   Each has: Channel Meter + GAIN + TREBLE + MID + BASS + glowing FILTER knob + orange CUE button + Channel Volume Fader
+ * - Bottom Horizontal Crossfader (< A | B >)
  */
 @Composable
-private fun CentralMixerPanel(
+private fun FourChannelCentralMixer(
     deckA: DeckState,
     deckB: DeckState,
     mixer: MixerState,
@@ -344,375 +730,480 @@ private fun CentralMixerPanel(
     modifier: Modifier = Modifier
 ) {
     val engine = viewModel.audioEngine
-    val knobSize = if (isFullscreen) 26.dp else 22.dp
-    val colorKnobSize = if (isFullscreen) 32.dp else 27.dp
 
-    Column(
+    BoxWithConstraints(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF080B12))
+            .background(Color(0xFF070A11))
             .border(1.2.dp, MetalBorder, RoundedCornerShape(8.dp))
-            .padding(horizontal = 4.dp, vertical = 3.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(horizontal = 4.dp, vertical = 3.dp)
     ) {
-        // DJM-A9 Style Header Strip
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("COLOR FX", color = TextMuted, fontSize = 7.sp, fontFamily = JetBrainsMonoFontFamily)
-            Text(
-                text = "BIJOY MIXER",
-                color = MetalSilverLight,
-                fontFamily = OrbitronFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 9.sp,
-                letterSpacing = 1.1.sp
-            )
-            Text("BEAT FX", color = DeckACyan, fontSize = 7.sp, fontFamily = JetBrainsMonoFontFamily)
+        val compactHeight = maxHeight < 320.dp
+        val knobSize: Dp = when {
+            maxHeight >= 390.dp -> 28.dp
+            maxHeight >= 325.dp || isFullscreen -> 24.5.dp
+            else -> 20.dp
         }
+        val showSideUtilityColumns = maxWidth >= 250.dp
 
-        Spacer(Modifier.height(2.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 1. LEFT COLUMN: SOUND COLOR FX RACK (matches DJM-A9 left bank)
-            Column(
-                modifier = Modifier
-                    .weight(0.76f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(Color(0xFF0D121D))
-                    .border(0.8.dp, Color(0xFF1F2A3F), RoundedCornerShape(5.dp))
-                    .padding(3.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
+            // Mixer Top Branding Header: CH CUE | BIJOY DJ | CH CUE
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("SND COLOR", color = TextSecondary, fontSize = 6.5.sp, fontFamily = JetBrainsMonoFontFamily, fontWeight = FontWeight.Bold)
-                SoundColorFxType.entries.forEach { fx ->
-                    val active = mixer.activeColorFx == fx
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(if (active) DeckACyan.copy(alpha = 0.28f) else Color(0xFF141B29))
-                            .border(
-                                width = if (active) 1.dp else 0.6.dp,
-                                color = if (active) DeckACyan else MetalBorder,
-                                shape = RoundedCornerShape(3.dp)
-                            )
-                            .clickable { engine.setSoundColorFx(fx) }
-                            .testTag("color_fx_${fx.name.lowercase()}")
-                            .padding(vertical = 2.5.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = fx.shortLabel,
-                            color = if (active) Color.White else TextSecondary,
-                            fontSize = 6.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            maxLines = 1
-                        )
-                    }
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    MiniTopTag("CH", LedGreen)
+                    MiniTopTag("CUE", LedGreen)
                 }
-                RotaryHardwareKnob(
-                    label = "PARAM",
-                    value = (mixer.colorFxParam * 2f) - 1f,
-                    accentColor = DeckACyan,
-                    knobSize = knobSize,
-                    testTagName = "color_fx_param",
-                    onValueChange = { engine.setColorFxParam((it + 1f) * 0.5f) },
-                    onReset = { engine.setColorFxParam(0.5f) }
+                Text(
+                    text = "BIJOY DJ",
+                    color = CrownGold,
+                    fontFamily = OrbitronFontFamily,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 10.sp,
+                    letterSpacing = 1.2.sp
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    MiniTopTag("CH", LedGreen)
+                    MiniTopTag("CUE", LedGreen)
+                }
             }
 
-            // 2. CHANNEL 1 STRIP (Deck A)
-            MixerChannelStrip(
-                channelNum = "1",
-                deck = deckA,
-                accent = DeckACyan,
-                knobSize = knobSize,
-                colorKnobSize = colorKnobSize,
-                onGain = { engine.updateDeckEq(DeckId.A, gainDb = it * 12f) },
-                onHi = { engine.updateDeckEq(DeckId.A, trebleDb = it * 12f) },
-                onMid = { engine.updateDeckEq(DeckId.A, midDb = it * 12f) },
-                onLow = { engine.updateDeckEq(DeckId.A, bassDb = it * 12f) },
-                onColor = { engine.updateDeckEq(DeckId.A, filterCutoff = it) },
-                onCue = { engine.toggleHeadphoneCue(DeckId.A) },
-                onBeatFx = { engine.toggleBeatFxAssign(DeckId.A) },
-                onFader = { engine.setChannelVolume(DeckId.A, it) },
+            // Middle Mixer Body: [Left HP/Utility] + [4 Channel Strips 1..4] + [Right Master/Meter/FX]
+            Row(
                 modifier = Modifier
-                    .weight(1.0f)
-                    .fillMaxHeight()
-            )
-
-            // 3. CHANNEL 2 STRIP (Deck B)
-            MixerChannelStrip(
-                channelNum = "2",
-                deck = deckB,
-                accent = DeckBRed,
-                knobSize = knobSize,
-                colorKnobSize = colorKnobSize,
-                onGain = { engine.updateDeckEq(DeckId.B, gainDb = it * 12f) },
-                onHi = { engine.updateDeckEq(DeckId.B, trebleDb = it * 12f) },
-                onMid = { engine.updateDeckEq(DeckId.B, midDb = it * 12f) },
-                onLow = { engine.updateDeckEq(DeckId.B, bassDb = it * 12f) },
-                onColor = { engine.updateDeckEq(DeckId.B, filterCutoff = it) },
-                onCue = { engine.toggleHeadphoneCue(DeckId.B) },
-                onBeatFx = { engine.toggleBeatFxAssign(DeckId.B) },
-                onFader = { engine.setChannelVolume(DeckId.B, it) },
-                modifier = Modifier
-                    .weight(1.0f)
-                    .fillMaxHeight()
-            )
-
-            // 4. RIGHT COLUMN: MASTER LEVEL + VU METERS + BEAT FX OLED + ON/OFF
-            Column(
-                modifier = Modifier
-                    .weight(1.04f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(Color(0xFF0D121D))
-                    .border(0.8.dp, Color(0xFF1F2A3F), RoundedCornerShape(5.dp))
-                    .padding(3.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Top: Master Level Knob + Dual Master Stereo VU Meters
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(0.46f),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Left Flanking Column (Headphone Vol, HP Mix, Beat Sync, Assign)
+                if (showSideUtilityColumns) {
+                    Column(
+                        modifier = Modifier
+                            .width(40.dp)
+                            .fillMaxHeight()
+                            .padding(vertical = 2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
                         RotaryHardwareKnob(
-                            label = "MASTER",
-                            value = (mixer.masterVolume * 2f) - 1f,
+                            label = "H.VOL",
+                            value = (mixer.headphoneVolume * 2f) - 1f,
+                            accentColor = DeckACyan,
+                            knobSize = knobSize,
+                            testTagName = "mixer_hp_vol_knob",
+                            onValueChange = { engine.setHeadphoneVolume((it + 1f) * 0.5f) },
+                            onReset = { engine.setHeadphoneVolume(0.85f) }
+                        )
+                        RotaryHardwareKnob(
+                            label = "H.MIX",
+                            value = (mixer.headphoneMix * 2f) - 1f,
+                            accentColor = DeckACyan,
+                            knobSize = knobSize,
+                            testTagName = "mixer_hp_mix_knob",
+                            onValueChange = { engine.setHeadphoneMix((it + 1f) * 0.5f) },
+                            onReset = { engine.setHeadphoneMix(0.5f) }
+                        )
+                        RotaryHardwareKnob(
+                            label = "BOOTH",
+                            value = (mixer.boothVolume * 2f) - 1f,
                             accentColor = DeckBGold,
                             knobSize = knobSize,
-                            testTagName = "mixer_master_knob",
-                            onValueChange = { engine.setMasterVolume((it + 1f) * 0.5f) },
-                            onReset = { engine.setMasterVolume(0.85f) }
+                            testTagName = "mixer_booth_knob",
+                            onValueChange = { engine.setBoothVolume((it + 1f) * 0.5f) },
+                            onReset = { engine.setBoothVolume(0.75f) }
                         )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxHeight(0.9f),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        VerticalVuMeter(level = mixer.masterLevelLeft, segments = 14, modifier = Modifier.fillMaxHeight())
-                        VerticalVuMeter(level = mixer.masterLevelRight, segments = 14, modifier = Modifier.fillMaxHeight())
-                    }
-                }
-
-                // Middle: DJM-A9 Beat FX OLED Screen (tap to cycle FX)
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFF030509))
-                        .border(1.dp, DeckABlue.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
-                        .clickable { engine.cycleBeatFxType() }
-                        .testTag("beat_fx_oled")
-                        .padding(horizontal = 4.dp, vertical = 3.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = mixer.beatFxType.displayName.uppercase(),
-                            color = Color.White,
-                            fontSize = 7.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${String.format("%.0f", deckA.effectiveBpm)}",
-                            color = DeckACyan,
-                            fontSize = 7.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = JetBrainsMonoFontFamily
-                        )
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        listOf("1/2", "1", "2").forEach { ratio ->
-                            val sel = mixer.beatFxRatio == ratio
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(if (sel) DeckABlue else Color(0xFF141B2B))
-                                    .clickable { engine.setBeatFxRatio(ratio) }
-                                    .padding(vertical = 1.dp),
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(if (deckA.syncActive) DeckACyan.copy(alpha = 0.35f) else Color(0xFF131A29))
+                                    .border(0.7.dp, DeckACyan, RoundedCornerShape(3.dp))
+                                    .clickable { engine.toggleSync(DeckId.A) }
+                                    .testTag("mixer_beat_sync_a_btn")
+                                    .padding(vertical = 3.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(ratio, color = Color.White, fontSize = 6.5.sp, fontFamily = JetBrainsMonoFontFamily)
+                                Text("SA", color = Color.White, fontSize = 5.5.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(if (deckB.syncActive) DeckBPink.copy(alpha = 0.35f) else Color(0xFF131A29))
+                                    .border(0.7.dp, DeckBPink, RoundedCornerShape(3.dp))
+                                    .clickable { engine.toggleSync(DeckId.B) }
+                                    .testTag("mixer_beat_sync_b_btn")
+                                    .padding(vertical = 3.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("SB", color = Color.White, fontSize = 5.5.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
                             }
                         }
                     }
                 }
 
-                // Level / Depth Knob
-                RotaryHardwareKnob(
-                    label = "DEPTH",
-                    value = (mixer.masterEffectWet * 2f) - 1f,
-                    accentColor = DeckABlue,
-                    knobSize = knobSize,
-                    testTagName = "beat_fx_depth_knob",
-                    onValueChange = { engine.setBeatFxLevel((it + 1f) * 0.5f) },
-                    onReset = { engine.setBeatFxLevel(0.4f) }
-                )
-
-                // Signature DJM-A9 Glowing Blue Beat FX ON/OFF Button
-                Box(
+                // 4 INDEPENDENT CHANNEL STRIPS (CHANNEL 1, 2, 3, 4)
+                Row(
                     modifier = Modifier
-                        .size(if (isFullscreen) 32.dp else 26.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (mixer.beatFxOn) DeckABlue else Color(0xFF13223D)
-                        )
-                        .border(
-                            width = 1.5.dp,
-                            color = if (mixer.beatFxOn) DeckACyan else DeckABlue.copy(alpha = 0.6f),
-                            shape = CircleShape
-                        )
-                        .clickable { engine.toggleBeatFxOn() }
-                        .testTag("beat_fx_on_off_btn"),
-                    contentAlignment = Alignment.Center
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Text(
-                        text = if (mixer.beatFxOn) "ON" else "FX",
-                        color = Color.White,
-                        fontSize = 7.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = JetBrainsMonoFontFamily
-                    )
+                    mixer.channels.forEach { ch ->
+                        val chColor = when (ch.channelIndex) {
+                            1 -> DeckACyan
+                            2 -> DeckBPink
+                            3 -> LedGreen
+                            else -> DeckBOrange
+                        }
+                        ChannelStripColumn(
+                            channel = ch,
+                            accent = chColor,
+                            knobSize = knobSize,
+                            compactHeight = compactHeight,
+                            onGainChange = { engine.updateChannelEqByIndex(ch.channelIndex, gainDb = it * 18f) },
+                            onTrebleChange = { engine.updateChannelEqByIndex(ch.channelIndex, trebleDb = it * 12f) },
+                            onMidChange = { engine.updateChannelEqByIndex(ch.channelIndex, midDb = it * 12f) },
+                            onBassChange = { engine.updateChannelEqByIndex(ch.channelIndex, bassDb = it * 12f) },
+                            onVocalChange = { engine.updateChannelEqByIndex(ch.channelIndex, vocalDb = it * 12f) },
+                            onFilterChange = { engine.updateChannelEqByIndex(ch.channelIndex, filterCutoff = it) },
+                            onCueClick = { engine.toggleChannelCue(ch.channelIndex) },
+                            onToggleEnabled = { engine.toggleChannelEnabled(ch.channelIndex) },
+                            onAssignClick = { engine.cycleChannelAssign(ch.channelIndex) },
+                            onVolumeChange = { engine.setChannelVolumeByIndex(ch.channelIndex, it) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                        )
+                    }
                 }
+
+                // Right Flanking Column (MASTER Knob, CUE LED, Master Stereo Meter, FX Wet/Depth, LIM)
+                if (showSideUtilityColumns) {
+                    Column(
+                        modifier = Modifier
+                            .width(40.dp)
+                            .fillMaxHeight()
+                            .padding(vertical = 2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        RotaryHardwareKnob(
+                            label = "MSTR",
+                            value = (mixer.masterVolume * 2f) - 1f,
+                            accentColor = CrownGold,
+                            knobSize = knobSize,
+                            testTagName = "mixer_master_knob",
+                            onValueChange = { engine.setMasterVolume((it + 1f) * 0.5f) },
+                            onReset = { engine.setMasterVolume(0.85f) }
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(if (mixer.beatFxOn) DeckBOrange else Color(0xFF281709))
+                                .border(0.8.dp, DeckBOrange, RoundedCornerShape(3.dp))
+                                .clickable { engine.toggleBeatFxOn() }
+                                .testTag("mixer_master_cue_fx_btn")
+                                .padding(vertical = 2.5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(if (mixer.beatFxOn) "FX ON" else "CUE", color = Color.White, fontSize = 6.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+                        }
+
+                        // Tall Master Stereo Level Meter
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(vertical = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            VerticalVuMeter(level = mixer.masterLevelLeft, segments = 14, modifier = Modifier.fillMaxHeight())
+                            VerticalVuMeter(level = mixer.masterLevelRight, segments = 14, modifier = Modifier.fillMaxHeight())
+                        }
+
+                        RotaryHardwareKnob(
+                            label = "FX",
+                            value = (mixer.masterEffectWet * 2f) - 1f,
+                            accentColor = LedPurple,
+                            knobSize = knobSize,
+                            testTagName = "mixer_fx_wet_knob",
+                            onValueChange = {
+                                val wet = ((it + 1f) * 0.5f).coerceIn(0f, 1f)
+                                val fx = if (mixer.masterEffect == DjEffectType.NONE) DjEffectType.ECHO else mixer.masterEffect
+                                engine.setMasterEffect(fx, wet = wet)
+                            },
+                            onReset = { engine.setMasterEffect(DjEffectType.NONE) }
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(if (mixer.masterLimiterEnabled) LedGreen.copy(alpha = 0.25f) else Color(0xFF1A1E29))
+                                .border(0.7.dp, if (mixer.masterLimiterEnabled) LedGreen else MetalBorder, RoundedCornerShape(3.dp))
+                                .clickable { engine.toggleMasterLimiter() }
+                                .testTag("mixer_limiter_btn")
+                                .padding(vertical = 1.5.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("LIM", color = if (mixer.masterLimiterEnabled) LedGreen else TextMuted, fontSize = 5.5.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+                        }
+                    }
+                }
+            }
+
+            // Bottom Horizontal Crossfader (< A | B >)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("< A", color = DeckACyan, fontSize = 7.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+                HardwareCrossfader(
+                    value = mixer.crossfader,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(26.dp),
+                    onValueChange = { engine.setCrossfader(it) }
+                )
+                Text("B >", color = DeckBPink, fontSize = 7.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
             }
         }
     }
 }
 
 @Composable
-private fun MixerChannelStrip(
-    channelNum: String,
-    deck: DeckState,
+private fun MiniTopTag(label: String, bg: Color) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(bg.copy(alpha = 0.85f))
+            .padding(horizontal = 3.dp, vertical = 1.dp)
+    ) {
+        Text(label, color = Color(0xFF070A12), fontSize = 5.5.sp, fontWeight = FontWeight.ExtraBold, fontFamily = JetBrainsMonoFontFamily)
+    }
+}
+
+/**
+ * Single Independent Mixer Channel Strip (CH 1, 2, 3, or 4):
+ * Channel Meter + GAIN + TREBLE + MID + BASS + FILTER + CUE + Volume Fader + Crossfader Assign
+ */
+@Composable
+private fun ChannelStripColumn(
+    channel: MixerChannelState,
     accent: Color,
     knobSize: Dp,
-    colorKnobSize: Dp,
-    onGain: (Float) -> Unit,
-    onHi: (Float) -> Unit,
-    onMid: (Float) -> Unit,
-    onLow: (Float) -> Unit,
-    onColor: (Float) -> Unit,
-    onCue: () -> Unit,
-    onBeatFx: () -> Unit,
-    onFader: (Float) -> Unit,
+    compactHeight: Boolean,
+    onGainChange: (Float) -> Unit,
+    onTrebleChange: (Float) -> Unit,
+    onMidChange: (Float) -> Unit,
+    onBassChange: (Float) -> Unit,
+    onVocalChange: (Float) -> Unit,
+    onFilterChange: (Float) -> Unit,
+    onCueClick: () -> Unit,
+    onToggleEnabled: () -> Unit,
+    onAssignClick: () -> Unit,
+    onVolumeChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val chTag = if (channelNum == "1") "ch_a" else "ch_b"
+    val chIdx = channel.channelIndex
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(5.dp))
-            .background(Color(0xFF0C101B))
-            .border(0.8.dp, Color(0xFF1F2A3F), RoundedCornerShape(5.dp))
-            .padding(horizontal = 2.dp, vertical = 2.dp),
+            .background(Color(0xFF0B101C))
+            .border(0.6.dp, MetalBorder.copy(alpha = 0.55f), RoundedCornerShape(5.dp))
+            .padding(horizontal = 1.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // Channel Header + Knobs & Per-Channel LED Meter side-by-side
+        // Upper EQ + Gain + Vocal + Filter + Individual Channel Meter
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1.15f),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+                .weight(if (compactHeight) 1.62f else 1.72f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
             Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceEvenly,
-                modifier = Modifier.fillMaxHeight()
+                verticalArrangement = Arrangement.SpaceEvenly
             ) {
-                RotaryHardwareKnob("TRIM", deck.gainDb / 12f, accent, knobSize, "${chTag}_gain", onGain)
-                RotaryHardwareKnob("HI", deck.trebleDb / 12f, accent, knobSize, "${chTag}_hi", onHi)
-                RotaryHardwareKnob("MID", deck.midDb / 12f, accent, knobSize, "${chTag}_mid", onMid)
-                RotaryHardwareKnob("LOW", deck.bassDb / 12f, accent, knobSize, "${chTag}_low", onLow)
+                StripKnob((channel.gainDb / 18f).coerceIn(-1f, 1f), "GAIN", accent, knobSize, "ch_${chIdx}_gain", onGainChange)
+                StripKnob(channel.trebleDb / 12f, "TREB", accent, knobSize, "ch_${chIdx}_treble", onTrebleChange)
+                StripKnob(channel.midDb / 12f, "MID", accent, knobSize, "ch_${chIdx}_mid", onMidChange)
+                StripKnob(channel.bassDb / 12f, "BASS", accent, knobSize, "ch_${chIdx}_bass", onBassChange)
+                StripKnob(channel.vocalDb / 12f, "VOC", LedPurple, knobSize, "ch_${chIdx}_vocal", onVocalChange)
+                StripKnob(channel.filterCutoff, "FILT", DeckACyan, knobSize, "ch_${chIdx}_filter", onFilterChange)
             }
+
+            // Individual Channel Level Meter beside knobs
             VerticalVuMeter(
-                level = (deck.levelLeft + deck.levelRight) * 0.5f,
+                level = channel.meterLevel,
                 segments = 12,
-                modifier = Modifier.fillMaxHeight(0.88f)
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight(0.88f)
             )
         }
 
-        // Large Metallic Sound Color FX Knob
-        RotaryHardwareKnob("COLOR", deck.filterCutoff, DeckACyan, colorKnobSize, "${chTag}_color", onColor)
-
-        // Orange CUE + Blue BEAT FX Assign Buttons (exact DJM-A9 colors)
+        // Orange CUE Button + ON/OFF Mute Toggle
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
+            modifier = Modifier.fillMaxWidth(0.94f),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(if (deck.headphoneCue) DeckBOrange else Color(0xFF2B1C10))
-                    .border(0.8.dp, DeckBOrange, RoundedCornerShape(3.dp))
-                    .clickable { onCue() }
-                    .testTag("hp_cue_${if (channelNum == "1") "a" else "b"}")
-                    .padding(vertical = 2.dp),
+                    .background(if (channel.cueActive) DeckBOrange else Color(0xFF8C4508))
+                    .border(0.7.dp, DeckBGold.copy(alpha = 0.85f), RoundedCornerShape(3.dp))
+                    .clickable { onCueClick() }
+                    .testTag("ch_${chIdx}_cue_btn")
+                    .padding(vertical = 1.5.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("CUE", color = Color.White, fontSize = 6.5.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+                Text("CUE", color = Color.White, fontSize = 5.2.sp, fontWeight = FontWeight.ExtraBold, fontFamily = JetBrainsMonoFontFamily)
             }
             Box(
                 modifier = Modifier
-                    .weight(0.8f)
+                    .weight(0.85f)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(if (deck.beatFxAssigned) DeckABlue else Color(0xFF101C2E))
-                    .border(0.8.dp, DeckABlue, RoundedCornerShape(3.dp))
-                    .clickable { onBeatFx() }
-                    .padding(vertical = 2.dp),
+                    .background(if (channel.channelEnabled) LedGreen.copy(alpha = 0.25f) else LedRed.copy(alpha = 0.35f))
+                    .border(0.7.dp, if (channel.channelEnabled) LedGreen else LedRed, RoundedCornerShape(3.dp))
+                    .clickable { onToggleEnabled() }
+                    .testTag("ch_${chIdx}_enable_btn")
+                    .padding(vertical = 1.5.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("FX", color = Color.White, fontSize = 6.5.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+                Text(
+                    text = if (channel.channelEnabled) "ON" else "MUTE",
+                    color = if (channel.channelEnabled) LedGreen else Color.White,
+                    fontSize = 5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFamily = JetBrainsMonoFontFamily
+                )
             }
         }
 
-        // Channel Fader + Channel Number
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.weight(0.75f)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            VerticalHardwareFader(
-                value = deck.volume,
-                accentColor = accent,
-                testTagName = "channel_${if (channelNum == "1") "a" else "b"}_volume_fader",
-                modifier = Modifier.weight(1f),
-                onValueChange = onFader
+            Text("$chIdx", color = TextPrimary, fontSize = 7.sp, fontWeight = FontWeight.Bold, fontFamily = OrbitronFontFamily)
+            Text(
+                text = channel.assign.label,
+                color = accent,
+                fontSize = 5.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = JetBrainsMonoFontFamily,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(accent.copy(alpha = 0.16f))
+                    .clickable { onAssignClick() }
+                    .testTag("ch_${chIdx}_assign_btn")
+                    .padding(horizontal = 2.dp)
             )
-            Text("CH $channelNum", color = accent, fontSize = 7.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+        }
+
+        // Channel Volume Fader
+        VerticalHardwareFader(
+            value = channel.volume,
+            accentColor = accent,
+            testTagName = "ch_${chIdx}_volume_fader",
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(if (compactHeight) 0.50f else 0.65f)
+        ) { onVolumeChange(it) }
+    }
+}
+
+@Composable
+private fun StripKnob(
+    value: Float,
+    label: String,
+    accent: Color,
+    knobSize: Dp,
+    tag: String,
+    onChange: (Float) -> Unit
+) {
+    RotaryHardwareKnob(
+        label = label,
+        value = value,
+        accentColor = accent,
+        knobSize = knobSize,
+        testTagName = tag,
+        onValueChange = onChange
+    )
+}
+
+@Composable
+private fun RoundHardwareTransportBtn(
+    isCircleIcon: Boolean,
+    isPlaying: Boolean,
+    label: String,
+    accentColor: Color,
+    active: Boolean,
+    size: Dp,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    tag: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(
+                Brush.radialGradient(
+                    colors = if (active) listOf(accentColor.copy(alpha = 0.45f), Color(0xFF0A0F1A))
+                    else listOf(Color(0xFF1D2434), Color(0xFF090D16))
+                )
+            )
+            .border(1.4.dp, if (active) accentColor else accentColor.copy(alpha = 0.72f), CircleShape)
+            .clickable { onClick() }
+            .testTag(tag),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            isCircleIcon -> Icon(
+                imageVector = if (isPlaying) BijoyIcons.Pause else Icons.Default.PlayArrow,
+                contentDescription = label,
+                tint = if (isPlaying) LedGreen else Color.White,
+                modifier = Modifier.size(size * 0.62f)
+            )
+            icon != null -> Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = accentColor,
+                modifier = Modifier.size(size * 0.62f)
+            )
+            else -> Text(
+                text = label,
+                color = if (active) Color.White else accentColor,
+                fontSize = 6.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontFamily = OrbitronFontFamily,
+                maxLines = 1
+            )
         }
     }
 }

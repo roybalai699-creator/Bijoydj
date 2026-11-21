@@ -18,10 +18,12 @@ val DeckACyan = Color(0xFF00E5FF)
 val DeckABlue = Color(0xFF0091EA)
 val DeckADarkGlow = Color(0xFF003B5C)
 
-// Deck B Neon Crimson / Orange / Gold
+// Deck B Neon Pink / Crimson / Orange / Gold
+val DeckBPink = Color(0xFFFF1E7A)
 val DeckBRed = Color(0xFFFF2E54)
 val DeckBOrange = Color(0xFFFF6D00)
 val DeckBGold = Color(0xFFFFC400)
+val CrownGold = Color(0xFFFFCA28)
 val DeckBDarkGlow = Color(0xFF5C0A1E)
 
 // Performance Pad & LED Accents

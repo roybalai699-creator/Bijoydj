@@ -37,6 +37,9 @@ interface SongDao {
     @Query("DELETE FROM songs WHERE id = :id")
     suspend fun deleteSongById(id: Long)
 
+    @Query("UPDATE songs SET folderName = :newName WHERE folderName = :oldName")
+    suspend fun renameFolder(oldName: String, newName: String)
+
     @Query("SELECT COUNT(*) FROM songs")
     suspend fun getSongCount(): Int
 }
@@ -153,8 +156,14 @@ interface CueLoopDao {
     @Query("SELECT * FROM saved_loops WHERE songId = :songId")
     suspend fun getLoopsForSong(songId: Long): List<SavedLoopEntity>
 
+    @Query("SELECT * FROM saved_loops ORDER BY id DESC")
+    fun observeAllLoops(): Flow<List<SavedLoopEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLoop(loop: SavedLoopEntity)
+
+    @Query("DELETE FROM saved_loops WHERE id = :id")
+    suspend fun deleteLoop(id: Long)
 }
 
 @Dao

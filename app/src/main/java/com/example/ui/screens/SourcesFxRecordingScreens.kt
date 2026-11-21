@@ -75,7 +75,7 @@ fun MusicSourcesScreen(
             // Primary Local Device & Imported Music Card
             SourceCardContainer(accent = DeckACyan) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = DeckACyan, modifier = Modifier.size(28.dp))
+                    Icon(BijoyIcons.LibraryMusic, contentDescription = null, tint = DeckACyan, modifier = Modifier.size(28.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Local & Imported Music (Primary Mixing Source)", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -91,7 +91,7 @@ fun MusicSourcesScreen(
             // Official Spotify Connection + Client ID & API Key Card
             SourceCardContainer(accent = SpotifyGreen) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.GraphicEq, contentDescription = "Spotify", tint = SpotifyGreen, modifier = Modifier.size(28.dp))
+                    Icon(BijoyIcons.GraphicEq, contentDescription = "Spotify", tint = SpotifyGreen, modifier = Modifier.size(28.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Spotify Account (Official OAuth PKCE / App Remote)", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -153,7 +153,7 @@ fun MusicSourcesScreen(
             // Official SoundCloud Connection Card
             SourceCardContainer(accent = SoundCloudOrange) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CloudQueue, contentDescription = "SoundCloud", tint = SoundCloudOrange, modifier = Modifier.size(28.dp))
+                    Icon(BijoyIcons.CloudQueue, contentDescription = "SoundCloud", tint = SoundCloudOrange, modifier = Modifier.size(28.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("SoundCloud (Official OAuth 2.0 PKCE)", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -217,7 +217,7 @@ fun MusicSourcesScreen(
             // Universal Custom API Key & Endpoint Connector Card
             SourceCardContainer(accent = LedPurple) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.VpnKey, contentDescription = "API Key Manager", tint = LedPurple, modifier = Modifier.size(26.dp))
+                    Icon(BijoyIcons.VpnKey, contentDescription = "API Key Manager", tint = LedPurple, modifier = Modifier.size(26.dp))
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Custom API Key System (Modular Provider Adapter)", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -318,9 +318,20 @@ fun EqualizerAndEffectsScreen(
     val deckA by viewModel.deckA.collectAsStateWithLifecycle()
     val deckB by viewModel.deckB.collectAsStateWithLifecycle()
     val mixer by viewModel.mixer.collectAsStateWithLifecycle()
+    val savedPresets by viewModel.allPresets.collectAsStateWithLifecycle()
     var target by remember { mutableStateOf(EffectTarget.DECK_A) }
+    var ch3Fx by remember { mutableStateOf(DjEffectType.NONE) }
+    var ch3Wet by remember { mutableFloatStateOf(0.45f) }
+    var ch3Param by remember { mutableFloatStateOf(0.5f) }
+    var ch4Fx by remember { mutableStateOf(DjEffectType.NONE) }
+    var ch4Wet by remember { mutableFloatStateOf(0.45f) }
+    var ch4Param by remember { mutableFloatStateOf(0.5f) }
+    var showSavePresetDialog by remember { mutableStateOf(false) }
+
     val activeDeck = if (target == EffectTarget.DECK_B) deckB else deckA
     val engine = viewModel.audioEngine
+    val tenBandLabels = listOf("31Hz", "62Hz", "125Hz", "250Hz", "500Hz", "1k", "2k", "4k", "8k", "16k")
+    val fifteenBandLabels = listOf("25Hz", "40Hz", "63Hz", "100", "160", "250", "400", "630", "1k", "1.6k", "2.5k", "4k", "6.3k", "10k", "16k")
 
     Column(
         modifier = Modifier
@@ -329,14 +340,24 @@ fun EqualizerAndEffectsScreen(
             .navigationBarsPadding()
     ) {
         SubScreenHeader(
-            title = if (initialMode == AppSection.EQUALIZER) "Equalizer Studio" else "DJ Effects & EQ",
+            title = if (initialMode == AppSection.EQUALIZER) "Multi-Band Equalizer Studio" else "24 DJ Effects & EQ",
             onBack = onBack,
             actions = {
+                if (target == EffectTarget.DECK_A || target == EffectTarget.DECK_B) {
+                    TextButton(onClick = { showSavePresetDialog = true }) {
+                        Text("Save Preset", color = DeckACyan, fontSize = 11.sp)
+                    }
+                }
                 TextButton(onClick = {
-                    val id = if (target == EffectTarget.DECK_B) DeckId.B else DeckId.A
-                    engine.updateDeckEq(id, gainDb = 0f, trebleDb = 0f, midDb = 0f, bassDb = 0f, filterCutoff = 0f, preset = EqPreset.FLAT)
+                    when (target) {
+                        EffectTarget.DECK_A -> engine.applyEqPreset(DeckId.A, EqPreset.FLAT)
+                        EffectTarget.DECK_B -> engine.applyEqPreset(DeckId.B, EqPreset.FLAT)
+                        EffectTarget.CHANNEL_3 -> engine.updateChannelEqByIndex(3, 0f, 0f, 0f, 0f, 0f, 0f)
+                        EffectTarget.CHANNEL_4 -> engine.updateChannelEqByIndex(4, 0f, 0f, 0f, 0f, 0f, 0f)
+                        EffectTarget.MASTER -> engine.setMasterEffect(DjEffectType.NONE)
+                    }
                 }) {
-                    Text("Reset EQ", color = DeckBOrange)
+                    Text("Reset", color = DeckBOrange)
                 }
             }
         )
@@ -348,13 +369,13 @@ fun EqualizerAndEffectsScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Target Selector (Deck A / Deck B / Master)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                EffectTarget.entries.forEach { t ->
+            // 5 Target Channels: Deck A (CH1), Deck B (CH2), CH3 Sampler, CH4 Aux, Master
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(EffectTarget.entries) { t ->
                     FilterChip(
                         selected = target == t,
                         onClick = { target = t },
-                        label = { Text(t.displayName, fontFamily = JetBrainsMonoFontFamily) },
+                        label = { Text(t.displayName, fontFamily = JetBrainsMonoFontFamily, fontSize = 11.sp) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = DeckACyan.copy(alpha = 0.25f),
                             selectedLabelColor = DeckACyan
@@ -363,10 +384,23 @@ fun EqualizerAndEffectsScreen(
                 }
             }
 
-            // EQ Presets
-            if (target != EffectTarget.MASTER) {
+            if (target == EffectTarget.DECK_A || target == EffectTarget.DECK_B) {
                 val deckId = if (target == EffectTarget.DECK_B) DeckId.B else DeckId.A
-                Text("EQ PRESETS (${target.displayName})", color = TextSecondary, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
+                Text("EQ BAND MODE & PRESETS (${target.displayName})", color = TextSecondary, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(EqBandMode.entries) { bm ->
+                        FilterChip(
+                            selected = activeDeck.eqBandMode == bm,
+                            onClick = { engine.setEqBandMode(deckId, bm) },
+                            label = { Text(bm.displayName, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = LedPurple.copy(alpha = 0.28f),
+                                selectedLabelColor = Color.White
+                            )
+                        )
+                    }
+                }
+
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(EqPreset.entries) { preset ->
                         FilterChip(
@@ -377,7 +411,117 @@ fun EqualizerAndEffectsScreen(
                     }
                 }
 
-                // 3-Band EQ + Filter Sliders
+                val customUserPresets = savedPresets.filter { !it.isBuiltIn }
+                if (customUserPresets.isNotEmpty()) {
+                    Text("SAVED USER PRESETS", color = CrownGold, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(customUserPresets, key = { it.id }) { up ->
+                            FilterChip(
+                                selected = false,
+                                onClick = { viewModel.applyCustomDjPreset(deckId, up) },
+                                label = { Text("${up.name} (×)", fontSize = 11.sp) },
+                                trailingIcon = {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Delete preset",
+                                        modifier = Modifier.size(14.dp).clickable { viewModel.deleteCustomDjPreset(up) }
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+
+                when (activeDeck.eqBandMode) {
+                    EqBandMode.BAND_15 -> {
+                        Text("15-BAND GRAPHIC EQUALIZER (-12dB to +12dB)", color = DeckACyan, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily, fontWeight = FontWeight.Bold)
+                        LazyRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(ChassisCard)
+                                .border(1.dp, MetalBorder, RoundedCornerShape(10.dp))
+                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(15) { idx ->
+                                val bandDb = activeDeck.fifteenBandEqDb.getOrElse(idx) { 0f }
+                                Column(
+                                    modifier = Modifier.width(48.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = String.format("%+.0f", bandDb),
+                                        color = if (bandDb > 0.5f) LedGreen else if (bandDb < -0.5f) DeckBOrange else TextSecondary,
+                                        fontSize = 9.sp,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Slider(
+                                        value = bandDb,
+                                        onValueChange = { engine.updateFifteenBandEq(deckId, idx, it) },
+                                        valueRange = -12f..12f,
+                                        modifier = Modifier.fillMaxWidth().testTag("eq_15band_$idx"),
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = if (idx < 5) DeckBRed else if (idx < 10) DeckBGold else DeckACyan,
+                                            activeTrackColor = DeckACyan
+                                        )
+                                    )
+                                    Text(fifteenBandLabels[idx], color = TextMuted, fontSize = 8.sp, fontFamily = JetBrainsMonoFontFamily)
+                                }
+                            }
+                        }
+                    }
+                    EqBandMode.BAND_10, EqBandMode.BAND_5 -> {
+                        val indices = if (activeDeck.eqBandMode == EqBandMode.BAND_5) listOf(1, 3, 5, 7, 9) else (0..9).toList()
+                        Text("${activeDeck.eqBandMode.bandCount}-BAND GRAPHIC EQUALIZER (-12dB to +12dB)", color = DeckACyan, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(ChassisCard)
+                                .border(1.dp, MetalBorder, RoundedCornerShape(10.dp))
+                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            indices.forEach { idx ->
+                                val bandDb = activeDeck.tenBandEqDb.getOrElse(idx) { 0f }
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = String.format("%+.0f", bandDb),
+                                        color = if (bandDb > 0.5f) LedGreen else if (bandDb < -0.5f) DeckBOrange else TextSecondary,
+                                        fontSize = 9.sp,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Slider(
+                                        value = bandDb,
+                                        onValueChange = { engine.updateTenBandEq(deckId, idx, it) },
+                                        valueRange = -12f..12f,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("eq_10band_$idx"),
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = if (idx < 3) DeckBRed else if (idx < 7) DeckBGold else DeckACyan,
+                                            activeTrackColor = DeckACyan
+                                        )
+                                    )
+                                    Text(tenBandLabels[idx], color = TextMuted, fontSize = 8.sp, fontFamily = JetBrainsMonoFontFamily)
+                                }
+                            }
+                        }
+                    }
+                    EqBandMode.BAND_3 -> {
+                        Text("3-BAND ISOLATOR MODE ACTIVE", color = DeckACyan, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // 3-Band Isolator EQ + Dedicated Vocal Level + Filter Sliders
                 EqSliderRow("Treble (High)", activeDeck.trebleDb, -12f..12f, "${String.format("%+.1f", activeDeck.trebleDb)} dB", DeckACyan) {
                     engine.updateDeckEq(deckId, trebleDb = it)
                 }
@@ -386,6 +530,9 @@ fun EqualizerAndEffectsScreen(
                 }
                 EqSliderRow("Bass (Low)", activeDeck.bassDb, -12f..12f, "${String.format("%+.1f", activeDeck.bassDb)} dB", DeckBRed) {
                     engine.updateDeckEq(deckId, bassDb = it)
+                }
+                EqSliderRow("Vocal Presence / Remover", activeDeck.vocalDb, -12f..12f, "${String.format("%+.1f", activeDeck.vocalDb)} dB", LedPurple) {
+                    engine.updateDeckEq(deckId, vocalDb = it)
                 }
                 EqSliderRow(
                     "Filter (LPF ◄ 0 ► HPF)",
@@ -400,28 +547,54 @@ fun EqualizerAndEffectsScreen(
                 ) {
                     engine.updateDeckEq(deckId, filterCutoff = it)
                 }
+            } else if (target == EffectTarget.CHANNEL_3 || target == EffectTarget.CHANNEL_4) {
+                val chIdx = if (target == EffectTarget.CHANNEL_3) 3 else 4
+                val ch = mixer.channels.find { it.channelIndex == chIdx }
+                if (ch != null) {
+                    EqSliderRow("${ch.label} Treble", ch.trebleDb, -12f..12f, "${String.format("%+.1f", ch.trebleDb)} dB", DeckACyan) {
+                        engine.updateChannelEqByIndex(chIdx, trebleDb = it)
+                    }
+                    EqSliderRow("${ch.label} Mid", ch.midDb, -12f..12f, "${String.format("%+.1f", ch.midDb)} dB", DeckBGold) {
+                        engine.updateChannelEqByIndex(chIdx, midDb = it)
+                    }
+                    EqSliderRow("${ch.label} Bass", ch.bassDb, -12f..12f, "${String.format("%+.1f", ch.bassDb)} dB", DeckBRed) {
+                        engine.updateChannelEqByIndex(chIdx, bassDb = it)
+                    }
+                    EqSliderRow("${ch.label} Vocal", ch.vocalDb, -12f..12f, "${String.format("%+.1f", ch.vocalDb)} dB", LedPurple) {
+                        engine.updateChannelEqByIndex(chIdx, vocalDb = it)
+                    }
+                    EqSliderRow("${ch.label} Filter", ch.filterCutoff, -1f..1f, String.format("%+.2f", ch.filterCutoff), LedPurple) {
+                        engine.updateChannelEqByIndex(chIdx, filterCutoff = it)
+                    }
+                }
             }
 
             HorizontalDivider(color = MetalBorder)
 
-            // 11 Professional DJ Effects
+            // All 16 Professional DJ Effects
             val currentFx = when (target) {
                 EffectTarget.DECK_A -> deckA.activeEffect
                 EffectTarget.DECK_B -> deckB.activeEffect
+                EffectTarget.CHANNEL_3 -> ch3Fx
+                EffectTarget.CHANNEL_4 -> ch4Fx
                 EffectTarget.MASTER -> mixer.masterEffect
             }
             val currentWet = when (target) {
                 EffectTarget.DECK_A -> deckA.effectWet
                 EffectTarget.DECK_B -> deckB.effectWet
+                EffectTarget.CHANNEL_3 -> ch3Wet
+                EffectTarget.CHANNEL_4 -> ch4Wet
                 EffectTarget.MASTER -> mixer.masterEffectWet
             }
             val currentParam = when (target) {
                 EffectTarget.DECK_A -> deckA.effectParam
                 EffectTarget.DECK_B -> deckB.effectParam
+                EffectTarget.CHANNEL_3 -> ch3Param
+                EffectTarget.CHANNEL_4 -> ch4Param
                 EffectTarget.MASTER -> mixer.masterEffectParam
             }
 
-            Text("DJ EFFECTS (${target.displayName})", color = TextSecondary, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
+            Text("${DjEffectType.entries.size} DJ EFFECTS (${target.displayName})", color = TextSecondary, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(DjEffectType.entries) { fx ->
                     val selected = currentFx == fx
@@ -434,6 +607,8 @@ fun EqualizerAndEffectsScreen(
                                 when (target) {
                                     EffectTarget.DECK_A -> engine.setDeckEffect(DeckId.A, fx)
                                     EffectTarget.DECK_B -> engine.setDeckEffect(DeckId.B, fx)
+                                    EffectTarget.CHANNEL_3 -> { ch3Fx = fx; engine.setChannelEffect(3, fx, ch3Wet, ch3Param) }
+                                    EffectTarget.CHANNEL_4 -> { ch4Fx = fx; engine.setChannelEffect(4, fx, ch4Wet, ch4Param) }
                                     EffectTarget.MASTER -> engine.setMasterEffect(fx)
                                 }
                             }
@@ -449,6 +624,8 @@ fun EqualizerAndEffectsScreen(
                 when (target) {
                     EffectTarget.DECK_A -> engine.setDeckEffect(DeckId.A, currentFx, wet = w)
                     EffectTarget.DECK_B -> engine.setDeckEffect(DeckId.B, currentFx, wet = w)
+                    EffectTarget.CHANNEL_3 -> { ch3Wet = w; engine.setChannelEffect(3, ch3Fx, w, ch3Param) }
+                    EffectTarget.CHANNEL_4 -> { ch4Wet = w; engine.setChannelEffect(4, ch4Fx, w, ch4Param) }
                     EffectTarget.MASTER -> engine.setMasterEffect(currentFx, wet = w)
                 }
             }
@@ -456,10 +633,39 @@ fun EqualizerAndEffectsScreen(
                 when (target) {
                     EffectTarget.DECK_A -> engine.setDeckEffect(DeckId.A, currentFx, param = p)
                     EffectTarget.DECK_B -> engine.setDeckEffect(DeckId.B, currentFx, param = p)
+                    EffectTarget.CHANNEL_3 -> { ch3Param = p; engine.setChannelEffect(3, ch3Fx, ch3Wet, p) }
+                    EffectTarget.CHANNEL_4 -> { ch4Param = p; engine.setChannelEffect(4, ch4Fx, ch4Wet, p) }
                     EffectTarget.MASTER -> engine.setMasterEffect(currentFx, param = p)
                 }
             }
         }
+    }
+
+    if (showSavePresetDialog) {
+        var presetName by remember { mutableStateOf("") }
+        val deckId = if (target == EffectTarget.DECK_B) DeckId.B else DeckId.A
+        AlertDialog(
+            onDismissRequest = { showSavePresetDialog = false },
+            containerColor = ChassisDark,
+            title = { Text("Save Custom EQ Preset", color = TextPrimary) },
+            text = {
+                OutlinedTextField(
+                    value = presetName,
+                    onValueChange = { presetName = it },
+                    placeholder = { Text("e.g., Bangla Bass Peak") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (presetName.isNotBlank()) {
+                        viewModel.saveCurrentEqPreset(presetName, deckId)
+                        showSavePresetDialog = false
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showSavePresetDialog = false }) { Text("Cancel") } }
+        )
     }
 }
 
@@ -495,7 +701,14 @@ fun SamplerStudioScreen(
     onBack: () -> Unit
 ) {
     val pads by viewModel.sfxPads.collectAsStateWithLifecycle()
+    val mixer by viewModel.mixer.collectAsStateWithLifecycle()
+    val sampleVol by viewModel.sampleMasterVolume.collectAsStateWithLifecycle()
     var editingPad by remember { mutableStateOf<SfxPadUi?>(null) }
+    var selectedCategory by remember { mutableStateOf("All") }
+
+    val visiblePads = remember(pads, selectedCategory) {
+        if (selectedCategory == "All") pads else pads.filter { it.category.equals(selectedCategory, ignoreCase = true) }
+    }
 
     Column(
         modifier = Modifier
@@ -504,7 +717,7 @@ fun SamplerStudioScreen(
             .navigationBarsPadding()
     ) {
         SubScreenHeader(
-            title = "SFX & Sampler Studio",
+            title = "16-Pad SFX & Sampler Studio",
             onBack = onBack,
             actions = {
                 TextButton(onClick = { viewModel.stopAllSfx() }) {
@@ -513,12 +726,79 @@ fun SamplerStudioScreen(
             }
         )
 
+        // Sampler Banks A/B/C/D + Sampler Roll Controls + Master Sample Volume + Category Filter
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(ChassisCard)
+                .border(1.dp, LedPurple.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("BANK:", color = TextSecondary, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
+                    listOf(0 to "Bank A", 1 to "Bank B", 2 to "Bank C", 3 to "Bank D").forEach { (idx, name) ->
+                        FilterChip(
+                            selected = mixer.samplerBankIndex == idx,
+                            onClick = { viewModel.switchSamplerBank(idx) },
+                            label = { Text(name, fontSize = 10.sp) }
+                        )
+                    }
+                }
+                Button(
+                    onClick = { viewModel.audioEngine.toggleSamplerRoll(0, mixer.samplerRollBeats) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (mixer.samplerRollActive) DeckACyan else LedPurple
+                    ),
+                    modifier = Modifier.testTag("studio_sampler_roll_btn")
+                ) {
+                    Text(if (mixer.samplerRollActive) "ROLL ON" else "SAMPLER ROLL", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(SfxSamplerEngine.PAD_CATEGORIES) { cat ->
+                    FilterChip(
+                        selected = selectedCategory == cat,
+                        onClick = { selectedCategory = cat },
+                        label = { Text(cat, fontSize = 10.sp) }
+                    )
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("ROLL BEAT:", color = TextSecondary, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
+                listOf("1/2" to 0.5f, "1" to 1f, "2" to 2f, "4" to 4f, "8" to 8f, "16" to 16f).forEach { (label, beats) ->
+                    FilterChip(
+                        selected = kotlin.math.abs(mixer.samplerRollBeats - beats) < 0.01f,
+                        onClick = { viewModel.audioEngine.setSamplerRollBeats(beats) },
+                        label = { Text(label, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily) }
+                    )
+                }
+            }
+
+            EqSliderRow(
+                label = "Sampler Bus Master Volume (CH 3)",
+                value = sampleVol,
+                range = 0f..1.5f,
+                readout = "${(sampleVol * 100).toInt()}%",
+                color = LedGreen
+            ) { viewModel.setSampleMasterVolume(it) }
+        }
+
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(pads, key = { it.index }) { pad ->
+            items(visiblePads, key = { it.index }) { pad ->
                 val color = parseHexColor(pad.colorHex)
                 Row(
                     modifier = Modifier
@@ -542,18 +822,34 @@ fun SamplerStudioScreen(
                     }
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(pad.label, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("${pad.index + 1}. ${pad.label}", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
-                            text = if (pad.customAudioUri != null) "Custom Audio Sample • Vol ${(pad.volume * 100).toInt()}%" else "Built-in Synth (${pad.synthType}) • Vol ${(pad.volume * 100).toInt()}%",
-                            color = TextSecondary,
+                            text = "${pad.category} • Vol ${(pad.volume * 100).toInt()}% • Pitch ${String.format("%.2fx", pad.pitchRatio)}" +
+                                (if (pad.isLooping) " • LOOPING" else ""),
+                            color = if (pad.isLooping) DeckACyan else TextSecondary,
                             fontSize = 10.sp
                         )
                     }
+                    IconButton(onClick = { viewModel.toggleSfxPadLoop(pad.index) }) {
+                        Icon(
+                            BijoyIcons.Repeat,
+                            contentDescription = "Loop Sample",
+                            tint = if (pad.isLooping) DeckACyan else TextMuted
+                        )
+                    }
+                    IconButton(onClick = { viewModel.audioEngine.toggleSamplerRoll(pad.index, mixer.samplerRollBeats) }) {
+                        Icon(BijoyIcons.FastForward, contentDescription = "Roll Sample", tint = LedPurple)
+                    }
                     IconButton(onClick = { onPickSampleForPad(pad.index) }) {
-                        Icon(Icons.Default.AudioFile, contentDescription = "Assign Sample", tint = DeckACyan)
+                        Icon(BijoyIcons.AudioFile, contentDescription = "Assign Sample", tint = DeckACyan)
+                    }
+                    if (pad.customAudioUri != null) {
+                        IconButton(onClick = { viewModel.removeCustomSampleFromPad(pad.index) }) {
+                            Icon(BijoyIcons.DeleteSweep, contentDescription = "Remove Custom Sample", tint = LedRed)
+                        }
                     }
                     IconButton(onClick = { editingPad = pad }) {
-                        Icon(Icons.Default.Tune, contentDescription = "Edit Pad", tint = TextSecondary)
+                        Icon(BijoyIcons.Tune, contentDescription = "Edit Pad", tint = TextSecondary)
                     }
                 }
             }
@@ -563,6 +859,7 @@ fun SamplerStudioScreen(
     editingPad?.let { pad ->
         var label by remember(pad) { mutableStateOf(pad.label) }
         var vol by remember(pad) { mutableFloatStateOf(pad.volume) }
+        var pitch by remember(pad) { mutableFloatStateOf(pad.pitchRatio) }
         AlertDialog(
             onDismissRequest = { editingPad = null },
             containerColor = ChassisDark,
@@ -572,11 +869,13 @@ fun SamplerStudioScreen(
                     OutlinedTextField(value = label, onValueChange = { label = it }, label = { Text("Pad Name") }, singleLine = true)
                     Text("Volume: ${(vol * 100).toInt()}%", color = TextSecondary, fontSize = 11.sp)
                     Slider(value = vol, onValueChange = { vol = it }, valueRange = 0.1f..1.4f)
+                    Text("Pitch Tuning: ${String.format("%.2fx", pitch)}", color = DeckACyan, fontSize = 11.sp)
+                    Slider(value = pitch, onValueChange = { pitch = it }, valueRange = 0.5f..2.0f)
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    viewModel.updateSfxPadConfig(pad.index, label, vol)
+                    viewModel.updateSfxPadConfig(pad.index, label, vol, pitch)
                     editingPad = null
                 }) { Text("Save") }
             },
@@ -600,6 +899,7 @@ fun RecordingStudioScreen(
     val recordings by viewModel.allRecordings.collectAsStateWithLifecycle()
     var customTitle by remember { mutableStateOf("") }
     var includeMic by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<com.example.database.RecordingEntity?>(null) }
 
     Column(
         modifier = Modifier
@@ -629,7 +929,7 @@ fun RecordingStudioScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = if (recState.isRecording) (if (recState.isPaused) "PAUSED" else "RECORDING MASTER MIX") else "READY TO RECORD",
+                        text = if (recState.isRecording) (if (recState.isPaused) "PAUSED" else "RECORDING ${recState.source.displayName.uppercase()}") else "READY TO RECORD",
                         color = if (recState.isRecording) LedRed else TextPrimary,
                         fontFamily = OrbitronFontFamily,
                         fontWeight = FontWeight.Bold,
@@ -645,13 +945,23 @@ fun RecordingStudioScreen(
                 )
             }
 
-            Text(
-                text = "Captures the real mixed master output (Deck A + Deck B + Crossfader + EQ + FX + SFX) as 16-bit 44.1kHz Stereo WAV.",
-                color = TextSecondary,
-                fontSize = 11.sp
-            )
-
             if (!recState.isRecording) {
+                Text("RECORDING SOURCE", color = TextSecondary, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(RecordSource.entries) { src ->
+                        FilterChip(
+                            selected = recState.source == src,
+                            onClick = {
+                                viewModel.setRecordSource(src)
+                                if (src == RecordSource.LIVE_MIC) {
+                                    includeMic = true
+                                    onRequestMicPermission()
+                                }
+                            },
+                            label = { Text(src.displayName, fontSize = 10.sp) }
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = customTitle,
                     onValueChange = { customTitle = it },
@@ -674,11 +984,11 @@ fun RecordingStudioScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!recState.isRecording) {
                     Button(
-                        onClick = { viewModel.startRecording(customTitle, includeMic) },
+                        onClick = { viewModel.startRecording(customTitle, includeMic, recState.source) },
                         colors = ButtonDefaults.buttonColors(containerColor = LedRed),
                         modifier = Modifier.testTag("start_recording_btn")
                     ) {
-                        Icon(Icons.Default.FiberManualRecord, contentDescription = null)
+                        Icon(BijoyIcons.FiberManualRecord, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
                         Text("Start Recording", fontWeight = FontWeight.Bold)
                     }
@@ -694,7 +1004,7 @@ fun RecordingStudioScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = DeckACyan, contentColor = ChassisVoid),
                         modifier = Modifier.testTag("stop_recording_btn")
                     ) {
-                        Icon(Icons.Default.Stop, contentDescription = null)
+                        Icon(BijoyIcons.Stop, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
                         Text("Stop & Save WAV", fontWeight = FontWeight.Bold)
                     }
@@ -724,7 +1034,7 @@ fun RecordingStudioScreen(
                         .padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Mic, contentDescription = null, tint = LedRed)
+                    Icon(BijoyIcons.Mic, contentDescription = null, tint = LedRed)
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(rec.title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -738,15 +1048,23 @@ fun RecordingStudioScreen(
                     TextButton(onClick = { viewModel.loadRecordingToDeck(DeckId.A, rec) }) {
                         Text("Deck A", color = DeckACyan, fontSize = 10.sp)
                     }
+                    if (rec.format.equals("WAV", ignoreCase = true)) {
+                        TextButton(onClick = { viewModel.exportRecordingAsM4a(rec) }) {
+                            Text("M4A", color = CrownGold, fontSize = 10.sp)
+                        }
+                    }
+                    IconButton(onClick = { renameTarget = rec }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Rename Recording", tint = TextSecondary, modifier = Modifier.size(17.dp))
+                    }
                     IconButton(onClick = { onExportRecording(rec.filePath) }) {
-                        Icon(Icons.Default.SaveAlt, contentDescription = "Save to Folder", tint = LedGreen, modifier = Modifier.size(18.dp))
+                        Icon(BijoyIcons.SaveAlt, contentDescription = "Save to Folder", tint = LedGreen, modifier = Modifier.size(18.dp))
                     }
                     IconButton(onClick = {
                         val file = File(rec.filePath)
                         if (file.exists()) {
                             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                             val share = Intent(Intent.ACTION_SEND).apply {
-                                type = "audio/wav"
+                                type = if (rec.format == "M4A") "audio/mp4" else "audio/wav"
                                 putExtra(Intent.EXTRA_STREAM, uri)
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
@@ -762,6 +1080,25 @@ fun RecordingStudioScreen(
             }
         }
     }
+
+    renameTarget?.let { rec ->
+        var newName by remember(rec) { mutableStateOf(rec.title) }
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            containerColor = ChassisDark,
+            title = { Text("Rename Recording", color = TextPrimary) },
+            text = {
+                OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text("Recording Title") }, singleLine = true)
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.renameRecording(rec, newName)
+                    renameTarget = null
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancel") } }
+        )
+    }
 }
 
 // ==================== SETTINGS & BACKUP/RESTORE ====================
@@ -774,6 +1111,7 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val settings by viewModel.userSettings.collectAsStateWithLifecycle()
+    val deckA by viewModel.deckA.collectAsStateWithLifecycle()
     val allSongs by viewModel.allSongs.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -783,7 +1121,15 @@ fun SettingsScreen(
             .background(ChassisVoid)
             .navigationBarsPadding()
     ) {
-        SubScreenHeader("BIJOY DJ Settings", onBack = onBack)
+        SubScreenHeader(
+            title = "BIJOY DJ Settings",
+            onBack = onBack,
+            actions = {
+                TextButton(onClick = { viewModel.openLayoutCustomizer(true) }) {
+                    Text("Layout Studio", color = DeckACyan, fontSize = 11.sp)
+                }
+            }
+        )
 
         Column(
             modifier = Modifier
@@ -792,13 +1138,23 @@ fun SettingsScreen(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SettingsGroup("GENERAL SETTINGS") {
+            SettingsGroup("GENERAL & INTERFACE SETTINGS") {
                 SettingToggle("Keep Screen Awake", settings.keepScreenAwake) { v -> viewModel.updateSettings { it.copy(keepScreenAwake = v) } }
                 SettingToggle("Prefer Landscape Mode", settings.preferLandscape) { v -> viewModel.updateSettings { it.copy(preferLandscape = v) } }
                 SettingToggle("Hardware LED Animations", settings.animationsEnabled) { v -> viewModel.updateSettings { it.copy(animationsEnabled = v) } }
+                Text("Interface Language", color = TextPrimary, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("English", "বাংলা", "Hindi").forEach { lang ->
+                        FilterChip(
+                            selected = settings.language == lang,
+                            onClick = { viewModel.updateSettings { it.copy(language = lang) } },
+                            label = { Text(lang, fontSize = 11.sp) }
+                        )
+                    }
+                }
             }
 
-            SettingsGroup("MIXER SETTINGS") {
+            SettingsGroup("MIXER & PITCH SETTINGS") {
                 Text("Jog Wheel Sensitivity: ${String.format("%.1fx", settings.jogSensitivity)}", color = TextPrimary, fontSize = 12.sp)
                 Slider(
                     value = settings.jogSensitivity,
@@ -815,18 +1171,79 @@ fun SettingsScreen(
                         )
                     }
                 }
+                Text("Default Pitch Slider Range", color = TextPrimary, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(6f, 10f, 16f, 50f, 100f).forEach { range ->
+                        FilterChip(
+                            selected = kotlin.math.abs(deckA.pitchRangePercent - range) < 0.5f,
+                            onClick = {
+                                viewModel.audioEngine.setPitchRange(DeckId.A, range)
+                                viewModel.audioEngine.setPitchRange(DeckId.B, range)
+                            },
+                            label = { Text("±${range.toInt()}%", fontSize = 10.sp) }
+                        )
+                    }
+                }
                 SettingToggle("Auto-Sync on Deck Load", settings.autoSync) { v -> viewModel.updateSettings { it.copy(autoSync = v) } }
-                Text("Auto-Fade Duration: ${String.format("%.1fs", settings.autoFadeDurationSec)}", color = TextPrimary, fontSize = 12.sp)
+                Text("Auto-Fade Duration: ${String.format("%.0fs", settings.autoFadeDurationSec)}", color = TextPrimary, fontSize = 12.sp)
                 Slider(
                     value = settings.autoFadeDurationSec,
-                    onValueChange = { d -> viewModel.updateSettings { it.copy(autoFadeDurationSec = d) } },
-                    valueRange = 1f..12f
+                    onValueChange = { d ->
+                        viewModel.updateSettings { it.copy(autoFadeDurationSec = d) }
+                        viewModel.audioEngine.setFadeDuration(d)
+                    },
+                    valueRange = 1f..15f
                 )
             }
 
-            SettingsGroup("AUDIO & LIBRARY SETTINGS") {
-                Text("Engine: Low-Latency AudioTrack • 44.1 kHz Stereo • 512-frame buffer", color = DeckACyan, fontSize = 11.sp, fontFamily = JetBrainsMonoFontFamily)
-                SettingToggle("Headphone Cue Monitoring (where supported)", settings.headphoneMonitoring) { v ->
+            SettingsGroup("AUDIO ENGINE, OUTPUT & LATENCY") {
+                Text(
+                    "Engine: 4-Channel AudioTrack • ${settings.sampleRateHz} Hz Stereo • ${settings.bufferSizeFrames}-frame buffer",
+                    color = DeckACyan,
+                    fontSize = 11.sp,
+                    fontFamily = JetBrainsMonoFontFamily
+                )
+                Text("Audio Output Device", color = TextPrimary, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("System Default", "Speaker / Headphones", "USB Audio Interface").forEach { dev ->
+                        FilterChip(
+                            selected = settings.outputDeviceName == dev,
+                            onClick = { viewModel.updateSettings { it.copy(outputDeviceName = dev) } },
+                            label = { Text(dev, fontSize = 10.sp) }
+                        )
+                    }
+                }
+                Text("Buffer Size (Latency vs Stability)", color = TextPrimary, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(256, 512, 1024).forEach { frames ->
+                        FilterChip(
+                            selected = settings.bufferSizeFrames == frames,
+                            onClick = { viewModel.updateSettings { it.copy(bufferSizeFrames = frames) } },
+                            label = { Text("$frames frames", fontSize = 10.sp) }
+                        )
+                    }
+                }
+                Text("Latency Mode", color = TextPrimary, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("LOW_LATENCY", "BALANCED", "SAFE_BUFFER").forEach { mode ->
+                        FilterChip(
+                            selected = settings.audioLatencyMode == mode,
+                            onClick = { viewModel.updateSettings { it.copy(audioLatencyMode = mode) } },
+                            label = { Text(mode.replace("_", " "), fontSize = 10.sp) }
+                        )
+                    }
+                }
+                Text("Recording Quality", color = TextPrimary, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("16-bit 44.1kHz Stereo", "16-bit 48kHz Stereo").forEach { q ->
+                        FilterChip(
+                            selected = settings.recordingQuality == q,
+                            onClick = { viewModel.updateSettings { it.copy(recordingQuality = q) } },
+                            label = { Text(q, fontSize = 10.sp) }
+                        )
+                    }
+                }
+                SettingToggle("Headphone Cue Monitoring (Pre-Fader Split)", settings.headphoneMonitoring) { v ->
                     viewModel.updateSettings { it.copy(headphoneMonitoring = v) }
                 }
                 SettingToggle("Copy Imported Songs to Private App Storage", settings.copyImportedToPrivateStorage) { v ->
@@ -845,7 +1262,7 @@ fun SettingsScreen(
                     fontFamily = JetBrainsMonoFontFamily
                 )
                 Text(
-                    "Note: Metadata backups include library metadata, playlists, favorites, settings, custom layouts, and DJ presets. Original local music files are not embedded automatically.",
+                    "Metadata backups include library metadata, playlists, favorites, hot cues, saved loops, settings, custom layouts, and DJ presets.",
                     color = TextMuted,
                     fontSize = 10.sp,
                     lineHeight = 14.sp
@@ -865,6 +1282,15 @@ fun SettingsScreen(
                     OutlinedButton(onClick = { scope.launch { viewModel.repository.clearHistory(); viewModel.postToast("Playback history cleared") } }) {
                         Text("Clear History", color = LedRed, fontSize = 11.sp)
                     }
+                }
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick = { viewModel.restoreDefaultSettings() },
+                    modifier = Modifier.fillMaxWidth().testTag("restore_defaults_btn")
+                ) {
+                    Icon(BijoyIcons.RestartAlt, contentDescription = null, tint = DeckBOrange)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Restore Default BIJOY DJ Settings", color = DeckBOrange, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -918,15 +1344,34 @@ fun AboutBijoyScreen(onBack: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("BIJOY DJ", color = TextPrimary, fontFamily = OrbitronFontFamily, fontWeight = FontWeight.Bold, fontSize = 26.sp)
-            Text("FEEL THE BEAT", color = DeckBRed, fontFamily = OrbitronFontFamily, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 3.sp)
-            Text("Version 1.0 • Professional Android DJ Mixing Studio", color = TextSecondary, fontSize = 12.sp)
+            BijoyGoldCrownIcon(modifier = Modifier.size(width = 64.dp, height = 50.dp))
+            Text("BIJOY DJ", color = CrownGold, fontFamily = OrbitronFontFamily, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp)
+            Text("FEEL THE BEAT", color = TextPrimary, fontFamily = OrbitronFontFamily, fontWeight = FontWeight.Bold, fontSize = 13.sp, letterSpacing = 3.sp)
+            Text("Version 2.0 • AI-Powered Studio 4-Channel Edition", color = DeckACyan, fontSize = 12.sp, fontFamily = JetBrainsMonoFontFamily)
             HorizontalDivider(color = MetalBorder)
             Text(
-                text = "Engineered with a real-time low-latency dual-deck PCM mixing engine, Pioneer-inspired metallic jog wheels, 3-band isolator EQ, resonant LPF/HPF filters, 11 DJ effects, 12-pad polyphonic SFX sampler, automatic BPM detection & beat sync, real decoded multi-band waveforms, WAV master recording studio, 15-table Room SQLite persistence, and full layout customization.",
+                text = "Developer: BIJOY DJ Audio Engineering Studio\nArchitecture: Kotlin + Jetpack Compose + MVVM + Room SQLite (15 Tables) + Low-Latency 4-Channel AudioTrack PCM DSP + Firebase AI Logic (Gemini 3.8 Flash)",
+                color = TextPrimary,
+                fontSize = 12.sp,
+                lineHeight = 18.sp
+            )
+            Text(
+                text = "Features: Dual-deck vinyl/CDJ/search jog wheels, 4-channel central hardware mixer (Gain, Treble, Mid, Bass, Vocal, Filter, Cue, ON/OFF, Channel Faders, Booth Vol, Limiter, Crossfader), 3/5/10/15-Band Graphic EQ with 11 presets + custom saves, 24 DJ audio effects, 8 Hot Cues, Auto-Loop & Cue Loop, 16-Pad Banked Sampler with Pitch & Roll, AI Song Remix Studio (15 styles), On-Device 4-Stem Separator & Vocal Remover, AI Auto DJ, Sad-to-DJ Converter, 16-step AI Beat Pattern Generator, BIJOY AI Assistant, WAV & M4A Recording Studio, Official Spotify & SoundCloud OAuth + Encrypted API Manager.",
                 color = TextSecondary,
-                fontSize = 13.sp,
-                lineHeight = 19.sp
+                fontSize = 12.sp,
+                lineHeight = 18.sp
+            )
+            HorizontalDivider(color = MetalBorder)
+            Text(
+                text = "Privacy & Permissions: BIJOY DJ uses zero-permission Android Storage Access Framework (SAF) for music & sample import and requests Microphone access only when live voiceover mixing is enabled. OAuth client credentials and API keys are encrypted locally using Android Keystore AES-256-GCM.",
+                color = TextMuted,
+                fontSize = 11.sp,
+                lineHeight = 16.sp
+            )
+            Text(
+                text = "Licenses: Built with AndroidX Jetpack Compose, Material 3, Room, Kotlin Coroutines, OkHttp, and Ktor/Serialization open-source components.",
+                color = TextMuted,
+                fontSize = 10.sp
             )
         }
     }

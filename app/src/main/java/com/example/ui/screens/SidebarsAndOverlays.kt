@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -17,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -33,12 +36,13 @@ import com.example.ui.theme.*
 import com.example.viewmodel.BijoyViewModel
 
 /**
- * Collapsible & Hideable Left Sidebar (Library, Favorites, History, Folders, Playlists).
- * Individual panel visibility toggles are respected; when collapsed displays a slim expand tab.
+ * Collapsible & Hideable Left Vertical Sidebar matching the exact 12 sections from the reference image:
+ * Library, Folders, Playlists, Favorites, History, Recordings, Music Sources, SFX, Sampler, FX, Equalizer, Settings.
  */
 @Composable
 fun LeftNavigationSidebar(
     layout: LayoutPreferenceEntity,
+    activeSection: AppSection,
     collapsed: Boolean,
     onToggleCollapse: () -> Unit,
     onNavigate: (AppSection) -> Unit
@@ -48,7 +52,7 @@ fun LeftNavigationSidebar(
     if (collapsed) {
         Box(
             modifier = Modifier
-                .width(22.dp)
+                .width(20.dp)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF0E1525))
@@ -57,98 +61,133 @@ fun LeftNavigationSidebar(
                 .testTag("left_sidebar_expand_tab"),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = "Expand Left Sidebar",
-                tint = DeckACyan,
-                modifier = Modifier.size(16.dp)
-            )
+            Icon(BijoyIcons.ChevronRight, contentDescription = "Expand Left Sidebar", tint = DeckACyan, modifier = Modifier.size(15.dp))
         }
         return
     }
 
-    val widthDp = layout.sidebarWidthDp.coerceIn(54, 110).dp
-    val compact = layout.layoutMode == "COMPACT" || layout.sidebarWidthDp <= 60
+    val widthDp = layout.sidebarWidthDp.coerceIn(72, 118).dp
+    val compact = layout.layoutMode == "COMPACT"
 
     Column(
         modifier = Modifier
             .width(widthDp)
             .fillMaxHeight()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF080C15))
+            .border(0.8.dp, MetalBorder.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+            .padding(3.dp)
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        // Collapse button
+        // Slim Collapse Row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(5.dp))
+                .clip(RoundedCornerShape(4.dp))
                 .background(Color(0xFF101726))
                 .clickable { onToggleCollapse() }
                 .testTag("left_sidebar_collapse_btn")
                 .padding(vertical = 2.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.Center
         ) {
-            Icon(Icons.Default.ChevronLeft, contentDescription = "Collapse Left Sidebar", tint = TextSecondary, modifier = Modifier.size(14.dp))
+            Icon(BijoyIcons.ChevronLeft, contentDescription = "Collapse Left Sidebar", tint = TextSecondary, modifier = Modifier.size(13.dp))
         }
 
-        if (layout.showMusicLibrary) {
-            SidebarNavTile("Library", Icons.Default.MusicNote, DeckACyan, compact, "sidebar_library") {
-                onNavigate(AppSection.MUSIC_LIBRARY)
+        val aiItems = listOf(
+            Triple(AppSection.AI_REMIX_STUDIO, BijoyIcons.AutoAwesome, layout.showAdditionalTools),
+            Triple(AppSection.STEM_SEPARATOR, BijoyIcons.Layers, layout.showAdditionalTools),
+            Triple(AppSection.AI_AUTO_DJ, BijoyIcons.SmartToy, layout.showAdditionalTools),
+            Triple(AppSection.SAD_TO_DJ, BijoyIcons.Bolt, layout.showAdditionalTools),
+            Triple(AppSection.AI_REMIX_GENERATOR, BijoyIcons.Pattern, layout.showAdditionalTools),
+            Triple(AppSection.AI_ASSISTANT, BijoyIcons.Assistant, layout.showAdditionalTools)
+        )
+
+        val items = listOf(
+            Triple(AppSection.MUSIC_LIBRARY, BijoyIcons.MusicNote, layout.showMusicLibrary),
+            Triple(AppSection.FOLDERS, BijoyIcons.Folder, layout.showFolders),
+            Triple(AppSection.PLAYLISTS, BijoyIcons.QueueMusic, layout.showPlaylists),
+            Triple(AppSection.FAVORITES, Icons.Default.Favorite, layout.showFavorites),
+            Triple(AppSection.HISTORY, BijoyIcons.Schedule, layout.showHistory),
+            Triple(AppSection.RECORDINGS, BijoyIcons.Mic, layout.showRecordingPanel),
+            Triple(AppSection.MUSIC_SOURCES, BijoyIcons.Cloud, layout.showAdditionalTools),
+            Triple(AppSection.SOUND_EFFECTS, BijoyIcons.GraphicEq, layout.showSoundEffects),
+            Triple(AppSection.SAMPLER, BijoyIcons.GridView, layout.showSamplerPanel),
+            Triple(AppSection.DJ_EFFECTS, BijoyIcons.Tune, layout.showFxPanel),
+            Triple(AppSection.EQUALIZER, BijoyIcons.Equalizer, true),
+            Triple(AppSection.SETTINGS, Icons.Default.Settings, true)
+        )
+
+        aiItems.forEach { (section, icon, visible) ->
+            if (visible) {
+                val highlighted = activeSection == section
+                SidebarListItem(
+                    label = section.title,
+                    icon = icon,
+                    iconTint = if (highlighted) Color.White else CrownGold,
+                    highlighted = highlighted,
+                    compact = compact,
+                    tag = "sidebar_${section.name.lowercase()}",
+                    onClick = { onNavigate(section) }
+                )
             }
         }
-        if (layout.showFavorites) {
-            SidebarNavTile("Favorites", Icons.Default.Star, DeckBGold, compact, "sidebar_favorites") {
-                onNavigate(AppSection.FAVORITES)
-            }
-        }
-        if (layout.showHistory) {
-            SidebarNavTile("History", Icons.Default.History, DeckABlue, compact, "sidebar_history") {
-                onNavigate(AppSection.HISTORY)
-            }
-        }
-        if (layout.showFolders) {
-            SidebarNavTile("Folders", Icons.Default.Folder, MetalSilverLight, compact, "sidebar_folders") {
-                onNavigate(AppSection.FOLDERS)
-            }
-        }
-        if (layout.showPlaylists) {
-            SidebarNavTile("Playlists", Icons.Default.QueueMusic, LedPurple, compact, "sidebar_playlists") {
-                onNavigate(AppSection.PLAYLISTS)
+
+        HorizontalDivider(color = MetalBorder.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 2.dp))
+
+        items.forEach { (section, icon, visible) ->
+            if (visible) {
+                val highlighted = activeSection == section || (activeSection == AppSection.DJ_MIXER && section == AppSection.MUSIC_LIBRARY)
+                val iconTint = when {
+                    section == AppSection.FAVORITES -> LedRed
+                    highlighted -> Color.White
+                    else -> TextSecondary
+                }
+                SidebarListItem(
+                    label = section.title,
+                    icon = icon,
+                    iconTint = iconTint,
+                    highlighted = highlighted,
+                    compact = compact,
+                    tag = "sidebar_${section.name.lowercase()}",
+                    onClick = { onNavigate(section) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SidebarNavTile(
+private fun SidebarListItem(
     label: String,
     icon: ImageVector,
-    accent: Color,
+    iconTint: Color,
+    highlighted: Boolean,
     compact: Boolean,
     tag: String,
     onClick: () -> Unit
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF0E1422))
-            .border(1.dp, accent.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(6.dp))
+            .background(
+                if (highlighted) Brush.horizontalGradient(listOf(DeckABlue, DeckACyan))
+                else Brush.horizontalGradient(listOf(Color(0xFF0C111E), Color(0xFF0C111E)))
+            )
             .clickable { onClick() }
             .testTag(tag)
-            .padding(vertical = if (compact) 6.dp else 8.dp, horizontal = 3.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(horizontal = 5.dp, vertical = if (compact) 4.dp else 5.5.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = label, tint = accent, modifier = Modifier.size(if (compact) 18.dp else 22.dp))
+        Icon(icon, contentDescription = label, tint = iconTint, modifier = Modifier.size(14.dp))
         if (!compact) {
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.width(5.dp))
             Text(
                 text = label,
-                color = TextPrimary,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
+                color = if (highlighted) Color.White else TextPrimary.copy(alpha = 0.9f),
+                fontSize = 8.5.sp,
+                fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -157,26 +196,31 @@ private fun SidebarNavTile(
 }
 
 /**
- * Collapsible & Hideable Right Sidebar (FX Panel Trigger + Colorful SFX Sampler Pads).
+ * Right Collapsible Panel matching the exact reference image:
+ * - Top Section: "SFX" with X collapse button + 3x4 Grid of 12 glowing SFX trigger pads
+ * - Bottom Section: "Sampler" with X collapse button + 3x2 Grid of colorful numbered Sampler Pads (1..6) + Roll quick toggle
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RightSfxSidebar(
     layout: LayoutPreferenceEntity,
     pads: List<SfxPadUi>,
     collapsed: Boolean,
+    samplerRollActive: Boolean,
     onToggleCollapse: () -> Unit,
-    onOpenFx: () -> Unit,
     onTriggerPad: (SfxPadUi) -> Unit,
+    onTogglePadLoop: (Int) -> Unit,
+    onToggleSamplerRoll: (Int) -> Unit,
     onStopAllSfx: () -> Unit
 ) {
-    if (!layout.showRightSidebar || (!layout.showSoundEffects && !layout.showFxPanel && !layout.showSamplerPanel)) {
+    if (!layout.showRightSidebar || (!layout.showSoundEffects && !layout.showSamplerPanel)) {
         return
     }
 
     if (collapsed) {
         Box(
             modifier = Modifier
-                .width(22.dp)
+                .width(20.dp)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF160E24))
@@ -185,17 +229,12 @@ fun RightSfxSidebar(
                 .testTag("right_sidebar_expand_tab"),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.ChevronLeft,
-                contentDescription = "Expand SFX Sidebar",
-                tint = LedPurple,
-                modifier = Modifier.size(16.dp)
-            )
+            Icon(BijoyIcons.ChevronLeft, contentDescription = "Expand SFX & Sampler Panel", tint = LedPurple, modifier = Modifier.size(15.dp))
         }
         return
     }
 
-    val widthDp = (layout.sidebarWidthDp + 24).coerceIn(78, 130).dp
+    val widthDp = (layout.sidebarWidthDp + 44).coerceIn(110, 152).dp
 
     Column(
         modifier = Modifier
@@ -203,91 +242,216 @@ fun RightSfxSidebar(
             .fillMaxHeight(),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(Color(0xFF141B2B))
-                    .clickable { onToggleCollapse() }
-                    .testTag("right_sidebar_collapse_btn")
-                    .padding(vertical = 2.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.ChevronRight, contentDescription = "Collapse SFX", tint = TextSecondary, modifier = Modifier.size(14.dp))
-            }
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(LedRed.copy(alpha = 0.22f))
-                    .clickable { onStopAllSfx() }
-                    .testTag("sfx_stop_all_btn")
-                    .padding(vertical = 2.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("STOP", color = LedRed, fontSize = 8.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
-            }
-        }
+        var showExtraPads by remember { mutableStateOf(false) }
 
-        if (layout.showFxPanel) {
+        // 1. TOP SFX BOX (12 visible per page + 1-12 / 5-16 bank toggle for all 16 SFX buttons)
+        if (layout.showSoundEffects) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .weight(1.45f)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(LedPurple.copy(alpha = 0.22f))
-                    .border(1.2.dp, LedPurple, RoundedCornerShape(8.dp))
-                    .clickable { onOpenFx() }
-                    .testTag("sidebar_fx_button")
-                    .padding(vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .background(Color(0xFF0A0E18))
+                    .border(1.dp, MetalBorder, RoundedCornerShape(8.dp))
+                    .padding(4.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = "DJ FX & EQ", tint = LedPurple, modifier = Modifier.size(18.dp))
-                Text("FX / EQ", color = TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = OrbitronFontFamily)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(if (showExtraPads) "SFX+" else "SFX", color = TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = OrbitronFontFamily)
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (showExtraPads) "1-12" else "13-16",
+                            color = DeckACyan,
+                            fontSize = 6.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(DeckACyan.copy(alpha = 0.16f))
+                                .clickable { showExtraPads = !showExtraPads }
+                                .testTag("sfx_bank_page_btn")
+                                .padding(horizontal = 3.dp, vertical = 1.dp)
+                        )
+                        Text(
+                            text = "STOP",
+                            color = LedRed,
+                            fontSize = 7.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(LedRed.copy(alpha = 0.16f))
+                                .clickable { onStopAllSfx() }
+                                .testTag("sfx_stop_all_btn")
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Collapse SFX",
+                            tint = TextSecondary,
+                            modifier = Modifier
+                                .size(14.dp)
+                                .clickable { onToggleCollapse() }
+                                .testTag("right_sidebar_collapse_btn")
+                        )
+                    }
+                }
+
+                // Exact reference 3x4 color & icon scheme for the 16 SFX buttons
+                val sfxPalette = listOf(
+                    Color(0xFF00E676) to BijoyIcons.Campaign,      // 1. Airhorn
+                    Color(0xFF76FF03) to BijoyIcons.GpsFixed,      // 2. Gunshot
+                    Color(0xFF00C853) to BijoyIcons.FlashOn,       // 3. Laser
+                    Color(0xFFFFD600) to BijoyIcons.NotificationsActive, // 4. Police Siren
+                    Color(0xFF00E676) to BijoyIcons.SportsMma,     // 5. Punch
+                    Color(0xFF00B0FF) to BijoyIcons.Alarm,         // 6. Siren
+                    Color(0xFFD500F9) to BijoyIcons.Album,         // 7. Scratch
+                    Color(0xFFFF9100) to BijoyIcons.Groups,        // 8. Crowd
+                    Color(0xFF0091EA) to BijoyIcons.MusicNote,     // 9. Drum
+                    Color(0xFF64DD17) to BijoyIcons.GraphicEq,     // 10. Bass Drop
+                    Color(0xFFFF1744) to BijoyIcons.PanTool,       // 11. Clap
+                    Color(0xFFFFB300) to BijoyIcons.Mic,           // 12. DJ Voice
+                    Color(0xFFFFEA00) to BijoyIcons.MusicNote,     // 13. Snare Snap
+                    Color(0xFF18FFFF) to BijoyIcons.TrendingUp,    // 14. Riser Sweep
+                    Color(0xFFFF5252) to BijoyIcons.GraphicEq,     // 15. Impact Boom
+                    Color(0xFFB388FF) to BijoyIcons.RecordVoiceOver // 16. DJ Drop
+                )
+
+                val visiblePads = if (showExtraPads && pads.size > 12) pads.drop(4).take(12) else pads.take(12)
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    items(visiblePads, key = { it.index }) { pad ->
+                        val (bgCol, icon) = sfxPalette.getOrElse(pad.index) { DeckACyan to BijoyIcons.Audiotrack }
+                        Column(
+                            modifier = Modifier
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(if (pad.isPlaying) bgCol else bgCol.copy(alpha = 0.86f))
+                                .border(
+                                    width = if (pad.isPlaying || pad.isLooping) 1.5.dp else 0.7.dp,
+                                    color = if (pad.isLooping) Color.White else bgCol.copy(alpha = 0.9f),
+                                    shape = RoundedCornerShape(5.dp)
+                                )
+                                .combinedClickable(
+                                    onClick = { onTriggerPad(pad) },
+                                    onLongClick = { onTogglePadLoop(pad.index) }
+                                )
+                                .testTag("sfx_pad_${pad.index}")
+                                .padding(2.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(icon, contentDescription = pad.label, tint = Color(0xFF090D16), modifier = Modifier.size(14.dp))
+                            Text(
+                                text = pad.label,
+                                color = Color(0xFF090D16),
+                                fontSize = 6.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
             }
         }
 
-        if (layout.showSoundEffects || layout.showSamplerPanel) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+        // 2. BOTTOM SAMPLER BOX (Numbered 1..6 colorful pads + ROLL trigger)
+        if (layout.showSamplerPanel) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                    .weight(0.55f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF0A0E18))
+                    .border(1.dp, MetalBorder, RoundedCornerShape(8.dp))
+                    .padding(4.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                items(pads, key = { it.index }) { pad ->
-                    val padColor = parseHexColor(pad.colorHex)
-                    Box(
-                        modifier = Modifier
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(7.dp))
-                            .background(
-                                if (pad.isPlaying) padColor.copy(alpha = 0.65f) else padColor.copy(alpha = 0.24f)
-                            )
-                            .border(
-                                width = if (pad.isPlaying) 2.dp else 1.2.dp,
-                                color = padColor,
-                                shape = RoundedCornerShape(7.dp)
-                            )
-                            .clickable { onTriggerPad(pad) }
-                            .testTag("sfx_pad_${pad.index}")
-                            .padding(3.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Sampler", color = TextPrimary, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, fontFamily = OrbitronFontFamily)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = pad.label,
-                            color = Color.White,
-                            fontSize = 8.sp,
+                            text = if (samplerRollActive) "ROLL ON" else "ROLL",
+                            color = if (samplerRollActive) ChassisVoid else DeckACyan,
+                            fontSize = 6.5.sp,
                             fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            maxLines = 2,
-                            lineHeight = 9.sp,
-                            overflow = TextOverflow.Ellipsis
+                            fontFamily = JetBrainsMonoFontFamily,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(if (samplerRollActive) DeckACyan else DeckACyan.copy(alpha = 0.16f))
+                                .clickable { onToggleSamplerRoll(0) }
+                                .testTag("sampler_roll_toggle")
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
                         )
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Collapse Sampler",
+                            tint = TextSecondary,
+                            modifier = Modifier
+                                .size(13.dp)
+                                .clickable { onToggleCollapse() }
+                        )
+                    }
+                }
+
+                val samplerColors = listOf(
+                    LedRed,            // 1 Red
+                    DeckBOrange,       // 2 Orange
+                    DeckACyan,         // 3 Cyan
+                    LedGreen,          // 4 Green
+                    Color(0xFFB388FF), // 5 Lavender/Purple
+                    DeckBGold          // 6 Gold
+                )
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    for (row in 0..1) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            for (col in 0..2) {
+                                val idx = row * 3 + col
+                                val pad = pads.getOrNull(idx)
+                                val pCol = samplerColors[idx]
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(5.dp))
+                                        .background(if (pad?.isPlaying == true) pCol else pCol.copy(alpha = 0.85f))
+                                        .clickable { if (pad != null) onTriggerPad(pad) }
+                                        .testTag("right_sampler_num_${idx + 1}"),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "${idx + 1}",
+                                        color = Color(0xFF090D16),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontFamily = OrbitronFontFamily
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -306,8 +470,8 @@ fun parseHexColor(hex: String): Color {
 /**
  * Full Layout Customizer Modal Dialog:
  * - 3 Modes: Standard, Compact, Fullscreen Mixer
- * - Individual Panel Visibility Toggles (all 10 optional panels)
- * - Sidebar Width adjustment
+ * - Individual Panel Visibility Toggles
+ * - Sidebar Width & Main Mixer Resize scale
  * - Save, Apply, Rename, Delete custom layouts + Restore Default
  */
 @Composable
@@ -349,7 +513,6 @@ fun LayoutCustomizerDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 3 Primary Modes
                 Text("LAYOUT MODES", color = TextSecondary, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -379,7 +542,6 @@ fun LayoutCustomizerDialog(
                     }
                 }
 
-                // Sidebar Width Slider
                 Text(
                     text = "SIDEBAR WIDTH: ${activeLayout.sidebarWidthDp} dp",
                     color = TextSecondary,
@@ -387,20 +549,34 @@ fun LayoutCustomizerDialog(
                     fontFamily = JetBrainsMonoFontFamily
                 )
                 Slider(
-                    value = activeLayout.sidebarWidthDp.toFloat().coerceIn(54f, 110f),
+                    value = activeLayout.sidebarWidthDp.toFloat().coerceIn(60f, 118f),
                     onValueChange = { w ->
                         viewModel.updateActiveLayout { it.copy(sidebarWidthDp = w.toInt()) }
                     },
-                    valueRange = 54f..110f,
+                    valueRange = 60f..118f,
                     colors = SliderDefaults.colors(thumbColor = DeckACyan, activeTrackColor = DeckACyan)
                 )
 
-                // Individual Panel Visibility Toggles
+                Text(
+                    text = "CENTRAL MIXER SIZE RATIO: ${String.format("%.2fx", activeLayout.mixerScale)}",
+                    color = TextSecondary,
+                    fontSize = 10.sp,
+                    fontFamily = JetBrainsMonoFontFamily
+                )
+                Slider(
+                    value = activeLayout.mixerScale.coerceIn(0.8f, 1.35f),
+                    onValueChange = { s ->
+                        viewModel.updateActiveLayout { it.copy(mixerScale = s) }
+                    },
+                    valueRange = 0.8f..1.35f,
+                    colors = SliderDefaults.colors(thumbColor = CrownGold, activeTrackColor = CrownGold)
+                )
+
                 Text("PANEL VISIBILITY CONTROLS", color = TextSecondary, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
                 LayoutToggleRow("Left Sidebar", activeLayout.showLeftSidebar) { v ->
                     viewModel.updateActiveLayout { it.copy(showLeftSidebar = v) }
                 }
-                LayoutToggleRow("Right SFX Sidebar", activeLayout.showRightSidebar) { v ->
+                LayoutToggleRow("Right SFX & Sampler Panel", activeLayout.showRightSidebar) { v ->
                     viewModel.updateActiveLayout { it.copy(showRightSidebar = v) }
                 }
                 LayoutToggleRow("Music Library", activeLayout.showMusicLibrary) { v ->
@@ -418,25 +594,21 @@ fun LayoutCustomizerDialog(
                 LayoutToggleRow("History", activeLayout.showHistory) { v ->
                     viewModel.updateActiveLayout { it.copy(showHistory = v) }
                 }
-                LayoutToggleRow("Sound Effects", activeLayout.showSoundEffects) { v ->
+                LayoutToggleRow("SFX Panel", activeLayout.showSoundEffects) { v ->
                     viewModel.updateActiveLayout { it.copy(showSoundEffects = v) }
-                }
-                LayoutToggleRow("FX Panel", activeLayout.showFxPanel) { v ->
-                    viewModel.updateActiveLayout { it.copy(showFxPanel = v) }
                 }
                 LayoutToggleRow("Sampler Panel", activeLayout.showSamplerPanel) { v ->
                     viewModel.updateActiveLayout { it.copy(showSamplerPanel = v) }
                 }
-                LayoutToggleRow("Recording Button", activeLayout.showRecordingPanel) { v ->
-                    viewModel.updateActiveLayout { it.copy(showRecordingPanel = v) }
+                LayoutToggleRow("FX Shortcut", activeLayout.showFxPanel) { v ->
+                    viewModel.updateActiveLayout { it.copy(showFxPanel = v) }
                 }
-                LayoutToggleRow("Source Quick Cards", activeLayout.showAdditionalTools) { v ->
-                    viewModel.updateActiveLayout { it.copy(showAdditionalTools = v) }
+                LayoutToggleRow("Recording Access", activeLayout.showRecordingPanel) { v ->
+                    viewModel.updateActiveLayout { it.copy(showRecordingPanel = v) }
                 }
 
                 HorizontalDivider(color = MetalBorder)
 
-                // Save Custom Layout
                 Text("SAVE CUSTOM LAYOUT", color = TextSecondary, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -463,7 +635,6 @@ fun LayoutCustomizerDialog(
                     }
                 }
 
-                // Saved Profiles List
                 if (savedLayouts.isNotEmpty()) {
                     Text("SAVED PROFILES", color = TextSecondary, fontSize = 10.sp, fontFamily = JetBrainsMonoFontFamily)
                     savedLayouts.forEach { profile ->

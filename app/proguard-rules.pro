@@ -12,10 +12,15 @@
 #   public *;
 #}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep BuildConfig, Room entities/DAOs, and audio/AI data classes intact under R8
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+-keep class com.example.BuildConfig { *; }
+-keep class com.example.database.** { *; }
+-keep class com.example.audio.** { *; }
+-keep class com.example.ai.** { *; }
+-keep class com.example.sources.** { *; }
+-dontwarn javax.annotation.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile

@@ -150,36 +150,41 @@ class BijoyRepository(
             )
         }
 
-        if (db.presetSettingsLayoutDao().getSamplerAssignmentsOnce().isEmpty()) {
-            val defaults = listOf(
-                SamplerAssignmentEntity(0, "Airhorn", "#00E676", null, 0.92f, "AIRHORN"),
-                SamplerAssignmentEntity(1, "Gunshot", "#FF6D00", null, 0.90f, "GUNSHOT"),
-                SamplerAssignmentEntity(2, "Laser", "#00E5FF", null, 0.88f, "LASER"),
-                SamplerAssignmentEntity(3, "Police Siren", "#D500F9", null, 0.85f, "POLICE_SIREN"),
-                SamplerAssignmentEntity(4, "Punch", "#76FF03", null, 0.92f, "PUNCH"),
-                SamplerAssignmentEntity(5, "Siren", "#FF9100", null, 0.86f, "SIREN"),
-                SamplerAssignmentEntity(6, "Scratch", "#00B0FF", null, 0.90f, "SCRATCH"),
-                SamplerAssignmentEntity(7, "Crowd", "#FF4081", null, 0.85f, "CROWD"),
-                SamplerAssignmentEntity(8, "Drum", "#2979FF", null, 0.95f, "DRUM"),
-                SamplerAssignmentEntity(9, "Bass Drop", "#E040FB", null, 0.95f, "BASS_DROP"),
-                SamplerAssignmentEntity(10, "Clap", "#FFC400", null, 0.88f, "CLAP"),
-                SamplerAssignmentEntity(11, "DJ Voice", "#FF1744", null, 0.90f, "DJ_VOICE")
-            )
-            defaults.forEach { db.presetSettingsLayoutDao().upsertSamplerAssignment(it) }
+        val existingPads = db.presetSettingsLayoutDao().getSamplerAssignmentsOnce()
+        val existingIndices = existingPads.map { it.padIndex }.toSet()
+        val defaults16 = listOf(
+            SamplerAssignmentEntity(0, "Airhorn", "#00E676", null, 0.92f, "AIRHORN"),
+            SamplerAssignmentEntity(1, "Gunshot", "#FF6D00", null, 0.90f, "GUNSHOT"),
+            SamplerAssignmentEntity(2, "Laser", "#00E5FF", null, 0.88f, "LASER"),
+            SamplerAssignmentEntity(3, "Police Siren", "#D500F9", null, 0.85f, "POLICE_SIREN"),
+            SamplerAssignmentEntity(4, "Punch", "#76FF03", null, 0.92f, "PUNCH"),
+            SamplerAssignmentEntity(5, "Siren", "#FF9100", null, 0.86f, "SIREN"),
+            SamplerAssignmentEntity(6, "Scratch", "#00B0FF", null, 0.90f, "SCRATCH"),
+            SamplerAssignmentEntity(7, "Crowd", "#FF4081", null, 0.85f, "CROWD"),
+            SamplerAssignmentEntity(8, "Drum", "#2979FF", null, 0.95f, "DRUM"),
+            SamplerAssignmentEntity(9, "Bass Drop", "#E040FB", null, 0.95f, "BASS_DROP"),
+            SamplerAssignmentEntity(10, "Clap", "#FFC400", null, 0.88f, "CLAP"),
+            SamplerAssignmentEntity(11, "DJ Voice", "#FF1744", null, 0.90f, "DJ_VOICE"),
+            SamplerAssignmentEntity(12, "Snare Snap", "#FFEA00", null, 0.90f, "SNARE_SNAP"),
+            SamplerAssignmentEntity(13, "Riser Sweep", "#18FFFF", null, 0.88f, "RISER_SWEEP"),
+            SamplerAssignmentEntity(14, "Impact Boom", "#FF5252", null, 0.95f, "IMPACT_BOOM"),
+            SamplerAssignmentEntity(15, "DJ Drop", "#B388FF", null, 0.92f, "DJ_DROP_TAG")
+        )
+        defaults16.filter { it.padIndex !in existingIndices }.forEach {
+            db.presetSettingsLayoutDao().upsertSamplerAssignment(it)
         }
 
-        if (db.presetSettingsLayoutDao().getAllPresetsOnce().isEmpty()) {
-            EqPreset.entries.filter { it != EqPreset.CUSTOM }.forEach { preset ->
-                db.presetSettingsLayoutDao().insertPreset(
-                    DjPresetEntity(
-                        name = preset.displayName,
-                        bassDb = preset.bassDb,
-                        midDb = preset.midDb,
-                        trebleDb = preset.trebleDb,
-                        isBuiltIn = true
-                    )
+        val existingPresets = db.presetSettingsLayoutDao().getAllPresetsOnce().map { it.name }.toSet()
+        EqPreset.entries.filter { it != EqPreset.CUSTOM && it.displayName !in existingPresets }.forEach { preset ->
+            db.presetSettingsLayoutDao().insertPreset(
+                DjPresetEntity(
+                    name = preset.displayName,
+                    bassDb = preset.bassDb,
+                    midDb = preset.midDb,
+                    trebleDb = preset.trebleDb,
+                    isBuiltIn = true
                 )
-            }
+            )
         }
     }
 
@@ -329,6 +334,8 @@ class BijoyRepository(
     suspend fun updateSamplerPad(assignment: SamplerAssignmentEntity) =
         db.presetSettingsLayoutDao().upsertSamplerAssignment(assignment)
 
+    val savedLoops: Flow<List<SavedLoopEntity>> = db.cueLoopDao().observeAllLoops()
+
     suspend fun saveHotCue(songId: Long, slotIndex: Int, positionMs: Long) {
         db.cueLoopDao().upsertHotCue(
             HotCueEntity(songId = songId, slotIndex = slotIndex, positionMs = positionMs)
@@ -342,6 +349,95 @@ class BijoyRepository(
     suspend fun getHotCues(songId: Long): List<HotCueEntity> =
         db.cueLoopDao().getHotCuesForSong(songId)
 
+    suspend fun saveLoop(songId: Long, startMs: Long, endMs: Long, beats: Float) {
+        db.cueLoopDao().insertLoop(
+            SavedLoopEntity(
+                songId = songId,
+                startMs = startMs,
+                endMs = endMs,
+                beatLength = beats,
+                label = "${if (beats < 1f) "1/${(1f / beats).toInt()}" else beats.toInt()} Beat Loop"
+            )
+        )
+    }
+
+    suspend fun deleteLoop(id: Long) = db.cueLoopDao().deleteLoop(id)
+
     suspend fun updateSongBpm(songId: Long, bpm: Float) =
         db.songDao().updateBpm(songId, bpm)
+
+    suspend fun renameFolder(oldName: String, newName: String) {
+        if (newName.isNotBlank()) {
+            db.songDao().renameFolder(oldName, newName.trim())
+        }
+    }
+
+    suspend fun moveSongToFolder(song: SongEntity, folderName: String) {
+        db.songDao().updateSong(song.copy(folderName = folderName.trim()))
+    }
+
+    suspend fun reorderPlaylistSong(playlistId: Long, songId: Long, newOrder: Int) {
+        db.playlistDao().updateSongOrder(playlistId, songId, newOrder)
+    }
+
+    suspend fun swapPlaylistSongs(playlistId: Long, songs: List<SongEntity>, fromIndex: Int, toIndex: Int) {
+        if (fromIndex !in songs.indices || toIndex !in songs.indices || fromIndex == toIndex) return
+        val mutable = songs.toMutableList()
+        val moved = mutable.removeAt(fromIndex)
+        mutable.add(toIndex, moved)
+        mutable.forEachIndexed { order, song ->
+            db.playlistDao().updateSongOrder(playlistId, song.id, order)
+        }
+    }
+
+    suspend fun registerRenderedRemix(
+        title: String,
+        wavFilePath: String,
+        durationMs: Long,
+        bpm: Float,
+        musicalKey: String,
+        styleName: String
+    ): SongEntity = withContext(Dispatchers.IO) {
+        val file = File(wavFilePath)
+        val uri = Uri.fromFile(file).toString()
+        val entity = SongEntity(
+            title = title,
+            artist = "BIJOY AI Remix ($styleName)",
+            album = "AI Remix Studio",
+            folderName = "AI Remixes",
+            uriString = uri,
+            localCopyPath = wavFilePath,
+            durationMs = durationMs,
+            bpm = bpm,
+            musicalKey = musicalKey,
+            artworkResName = "deck_b",
+            format = "WAV",
+            sourceType = "REMIX",
+            isBuiltInSynth = false
+        )
+        val newId = db.songDao().insertSong(entity)
+        db.artistAlbumDao().upsertArtist(ArtistEntity(name = entity.artist))
+        db.artistAlbumDao().upsertAlbum(AlbumEntity(title = entity.album, artistName = entity.artist))
+        entity.copy(id = newId)
+    }
+
+    suspend fun saveUserEqPreset(name: String, bassDb: Float, midDb: Float, trebleDb: Float, filterCutoff: Float = 0f) {
+        if (name.isBlank()) return
+        db.presetSettingsLayoutDao().insertPreset(
+            DjPresetEntity(
+                name = name.trim(),
+                bassDb = bassDb,
+                midDb = midDb,
+                trebleDb = trebleDb,
+                filterCutoff = filterCutoff,
+                isBuiltIn = false
+            )
+        )
+    }
+
+    suspend fun deleteUserPreset(preset: DjPresetEntity) {
+        if (!preset.isBuiltIn) {
+            db.presetSettingsLayoutDao().deletePreset(preset)
+        }
+    }
 }

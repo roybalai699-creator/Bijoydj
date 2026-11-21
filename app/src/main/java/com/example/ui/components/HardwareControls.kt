@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,24 +45,37 @@ fun RotaryHardwareKnob(
     onValueChange: (Float) -> Unit,
     onReset: () -> Unit = { onValueChange(0f) }
 ) {
+    val currentValue by androidx.compose.runtime.rememberUpdatedState(value)
+    val currentOnValueChange by androidx.compose.runtime.rememberUpdatedState(onValueChange)
+    val currentOnReset by androidx.compose.runtime.rememberUpdatedState(onReset)
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.testTag(testTagName)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(knobSize)
-                .pointerInput(label) {
-                    detectTapGestures(onDoubleTap = { onReset() })
-                }
-                .pointerInput(label, value) {
-                    detectDragGestures { change, dragAmount ->
+        modifier = Modifier
+            .widthIn(min = knobSize + 8.dp)
+            .testTag(testTagName)
+            .pointerInput("${testTagName}_tap") {
+                detectTapGestures(onDoubleTap = { currentOnReset() })
+            }
+            .pointerInput("${testTagName}_drag") {
+                var activeValue = currentValue
+                detectDragGestures(
+                    onDragStart = { activeValue = currentValue },
+                    onDrag = { change, dragAmount ->
                         change.consume()
-                        val delta = -dragAmount.y / 90f
-                        onValueChange((value + delta).coerceIn(-1f, 1f))
+                        val primaryDelta = if (kotlin.math.abs(dragAmount.x) >= kotlin.math.abs(dragAmount.y)) {
+                            dragAmount.x
+                        } else {
+                            -dragAmount.y
+                        }
+                        val next = (activeValue + (primaryDelta / 56f)).coerceIn(-1f, 1f)
+                        activeValue = next
+                        currentOnValueChange(next)
                     }
-                }
-        ) {
+                )
+            }
+    ) {
+        Box(modifier = Modifier.size(knobSize)) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val r = size.minDimension / 2f
                 val c = Offset(size.width / 2f, size.height / 2f)
@@ -74,7 +88,7 @@ fun RotaryHardwareKnob(
                     useCenter = false,
                     topLeft = Offset(2f, 2f),
                     size = Size(size.width - 4f, size.height - 4f),
-                    style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                    style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
                 )
 
                 // Active LED arc from 12 o'clock (-90 deg)
@@ -87,41 +101,41 @@ fun RotaryHardwareKnob(
                         useCenter = false,
                         topLeft = Offset(2f, 2f),
                         size = Size(size.width - 4f, size.height - 4f),
-                        style = Stroke(width = 2.8.dp.toPx(), cap = StrokeCap.Round)
+                        style = Stroke(width = 3.0.dp.toPx(), cap = StrokeCap.Round)
                     )
                 }
 
                 // Metallic knob body
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0xFF3E485C), Color(0xFF141923), Color(0xFF0A0D14)),
+                        colors = listOf(Color(0xFF475569), Color(0xFF182030), Color(0xFF0A0D14)),
                         center = Offset(c.x - r * 0.2f, c.y - r * 0.2f),
-                        radius = r * 0.85f
+                        radius = r * 0.88f
                     ),
-                    radius = r * 0.72f,
+                    radius = r * 0.74f,
                     center = c
                 )
                 drawCircle(
-                    color = Color(0xFF64748B),
-                    radius = r * 0.72f,
+                    color = if (kotlin.math.abs(value) > 0.05f) accentColor.copy(alpha = 0.75f) else Color(0xFF64748B),
+                    radius = r * 0.74f,
                     center = c,
-                    style = Stroke(width = 1.dp.toPx())
+                    style = Stroke(width = 1.1.dp.toPx())
                 )
 
                 // White/Accent pointer line
                 val angleRad = ((value * 135f) - 90f) * PI.toFloat() / 180f
                 drawLine(
                     color = if (kotlin.math.abs(value) > 0.05f) accentColor else TextPrimary,
-                    start = Offset(c.x + cos(angleRad) * r * 0.20f, c.y + sin(angleRad) * r * 0.20f),
-                    end = Offset(c.x + cos(angleRad) * r * 0.66f, c.y + sin(angleRad) * r * 0.66f),
-                    strokeWidth = 2.2.dp.toPx(),
+                    start = Offset(c.x + cos(angleRad) * r * 0.18f, c.y + sin(angleRad) * r * 0.18f),
+                    end = Offset(c.x + cos(angleRad) * r * 0.68f, c.y + sin(angleRad) * r * 0.68f),
+                    strokeWidth = 2.4.dp.toPx(),
                     cap = StrokeCap.Round
                 )
             }
         }
         Text(
             text = label,
-            color = TextSecondary,
+            color = if (kotlin.math.abs(value) > 0.05f) accentColor else TextSecondary,
             fontSize = 8.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = JetBrainsMonoFontFamily,
@@ -230,7 +244,7 @@ fun HardwareCrossfader(
 ) {
     Box(
         modifier = modifier
-            .height(34.dp)
+            .heightIn(min = 24.dp, max = 34.dp)
             .testTag("hardware_crossfader")
             .pointerInput("crossfader_drag") {
                 detectDragGestures { change, _ ->

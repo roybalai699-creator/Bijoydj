@@ -1,9 +1,15 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.speech.RecognizerIntent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -123,6 +129,8 @@ private fun BijoyMainStudioScaffold(viewModel: BijoyViewModel) {
     val showLayoutDialog by viewModel.showLayoutCustomizer.collectAsStateWithLifecycle()
     val statusToast by viewModel.statusToast.collectAsStateWithLifecycle()
 
+    val context = LocalContext.current
+    val allSongs by viewModel.allSongs.collectAsStateWithLifecycle()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -164,6 +172,41 @@ private fun BijoyMainStudioScaffold(viewModel: BijoyViewModel) {
             viewModel.exportRecordingToUri(path, uri)
         }
         pendingExportRecordingPath = null
+    }
+
+    val speechRecognizerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+            if (!spoken.isNullOrBlank()) {
+                viewModel.aiStudio.sendAssistantPrompt(spoken, allSongs)
+            }
+        }
+    }
+
+    val launchVoiceCommand = {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak a DJ command (e.g. Match BPM, Bass Boost, Add Echo)...")
+        }
+        if (intent.resolveActivity(context.packageManager) != null) {
+            speechRecognizerLauncher.launch(intent)
+        } else {
+            viewModel.postToast("Speech recognition service unavailable on this device — type your command below")
+        }
+    }
+
+    val voiceMicPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            launchVoiceCommand()
+        } else {
+            viewModel.postToast("Microphone permission denied — type commands in AI Assistant")
+        }
     }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
@@ -254,45 +297,50 @@ private fun BijoyMainStudioScaffold(viewModel: BijoyViewModel) {
                         val isFullscreen = layout.layoutMode == "FULLSCREEN"
                         Column(modifier = Modifier.fillMaxSize()) {
                             BijoyTopHeaderBar(
-                                spectrumBands = mixer.spectrumBands,
+                                spotifyState = spotifyState,
+                                soundCloudState = soundCloudState,
                                 recordingState = recState,
                                 isFullscreenMixer = isFullscreen,
-                                showRecButton = layout.showRecordingPanel || isFullscreen,
                                 onMenuClick = { scope.launch { drawerState.open() } },
-                                onRecClick = { viewModel.navigateTo(AppSection.RECORDINGS) },
-                                onLayoutClick = { viewModel.openLayoutCustomizer(true) },
+                                onSpotifyClick = { viewModel.navigateTo(AppSection.MUSIC_SOURCES) },
+                                onSoundCloudClick = { viewModel.navigateTo(AppSection.MUSIC_SOURCES) },
                                 onSettingsClick = { viewModel.navigateTo(AppSection.SETTINGS) },
                                 onAboutClick = { viewModel.navigateTo(AppSection.ABOUT) },
-                                onToggleExpandMixer = { viewModel.toggleExpandMixer() }
+                                onLayoutClick = { viewModel.openLayoutCustomizer(true) }
                             )
 
                             TopSongDisplayRow(
                                 deckA = deckA,
                                 deckB = deckB,
-                                spotifyState = spotifyState,
-                                soundCloudState = soundCloudState,
-                                showSourceCards = layout.showAdditionalTools,
                                 isFullscreenMixer = isFullscreen,
                                 onSeekA = { viewModel.audioEngine.seekToRatio(DeckId.A, it) },
                                 onSeekB = { viewModel.audioEngine.seekToRatio(DeckId.B, it) },
                                 onZoomA = { viewModel.audioEngine.setWaveformZoom(DeckId.A, it) },
                                 onZoomB = { viewModel.audioEngine.setWaveformZoom(DeckId.B, it) },
+                                onPlayPauseA = { viewModel.audioEngine.togglePlayPause(DeckId.A) },
+                                onPlayPauseB = { viewModel.audioEngine.togglePlayPause(DeckId.B) },
+                                onCueA = { viewModel.audioEngine.triggerCue(DeckId.A) },
+                                onCueB = { viewModel.audioEngine.triggerCue(DeckId.B) },
+                                onResetA = { viewModel.audioEngine.resetDeckPlayback(DeckId.A) },
+                                onResetB = { viewModel.audioEngine.resetDeckPlayback(DeckId.B) },
+                                onLoadA = { viewModel.navigateTo(AppSection.MUSIC_LIBRARY) },
+                                onLoadB = { viewModel.navigateTo(AppSection.MUSIC_LIBRARY) },
                                 onSwapDecks = { viewModel.audioEngine.swapDecks() },
-                                onEditBpm = { id, cur -> bpmEditTarget = id to cur },
-                                onOpenSources = { viewModel.navigateTo(AppSection.MUSIC_SOURCES) }
+                                onEditBpm = { id, cur -> bpmEditTarget = id to cur }
                             )
 
-                            // Main Middle Area: Left Sidebar + Expandable Dual-Deck Controller + Right SFX Sidebar
+                            // Main Middle Area: Left Sidebar + Expandable 4-Channel Dual-Deck Console + Right SFX/Sampler Panel
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .weight(1f)
-                                    .padding(horizontal = if (isFullscreen) 4.dp else 6.dp, vertical = 2.dp),
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    .padding(horizontal = if (isFullscreen) 4.dp else 5.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 AnimatedVisibility(visible = !isFullscreen && layout.showLeftSidebar, enter = fadeIn(), exit = fadeOut()) {
                                     LeftNavigationSidebar(
                                         layout = layout,
+                                        activeSection = currentSection,
                                         collapsed = leftCollapsed,
                                         onToggleCollapse = { leftCollapsed = !leftCollapsed },
                                         onNavigate = { viewModel.navigateTo(it) }
@@ -303,6 +351,7 @@ private fun BijoyMainStudioScaffold(viewModel: BijoyViewModel) {
                                     deckA = deckA,
                                     deckB = deckB,
                                     mixer = mixer,
+                                    mixerScale = layout.mixerScale,
                                     isFullscreenMixer = isFullscreen,
                                     viewModel = viewModel,
                                     modifier = Modifier
@@ -315,29 +364,36 @@ private fun BijoyMainStudioScaffold(viewModel: BijoyViewModel) {
                                         layout = layout,
                                         pads = sfxPads,
                                         collapsed = rightCollapsed,
+                                        samplerRollActive = mixer.samplerRollActive,
                                         onToggleCollapse = { rightCollapsed = !rightCollapsed },
-                                        onOpenFx = { viewModel.navigateTo(AppSection.DJ_EFFECTS) },
                                         onTriggerPad = { viewModel.triggerSfxPad(it) },
+                                        onTogglePadLoop = { viewModel.toggleSfxPadLoop(it) },
+                                        onToggleSamplerRoll = { padIdx -> viewModel.audioEngine.toggleSamplerRoll(padIdx) },
                                         onStopAllSfx = { viewModel.stopAllSfx() }
                                     )
                                 }
                             }
 
-                            BottomTransportBar(
+                            BottomDjControlBar(
                                 deckA = deckA,
                                 deckB = deckB,
                                 mixer = mixer,
-                                onCueA = { viewModel.audioEngine.triggerCue(DeckId.A) },
+                                isFullscreenMixer = isFullscreen,
                                 onPlayPauseA = { viewModel.audioEngine.togglePlayPause(DeckId.A) },
+                                onCueA = { viewModel.audioEngine.triggerCue(DeckId.A) },
+                                onResetA = { viewModel.audioEngine.resetDeckPlayback(DeckId.A) },
                                 onSyncA = { viewModel.audioEngine.toggleSync(DeckId.A) },
-                                onCueB = { viewModel.audioEngine.triggerCue(DeckId.B) },
+                                onRepeatA = { viewModel.audioEngine.toggleRepeatMode(DeckId.A) },
                                 onPlayPauseB = { viewModel.audioEngine.togglePlayPause(DeckId.B) },
+                                onCueB = { viewModel.audioEngine.triggerCue(DeckId.B) },
+                                onResetB = { viewModel.audioEngine.resetDeckPlayback(DeckId.B) },
                                 onSyncB = { viewModel.audioEngine.toggleSync(DeckId.B) },
-                                onToggleAutoFade = {
-                                    viewModel.audioEngine.triggerAutoFade(viewModel.userSettings.value.autoFadeDurationSec)
-                                },
-                                onCrossfaderChange = { viewModel.audioEngine.setCrossfader(it) },
-                                onMasterVolumeChange = { viewModel.audioEngine.setMasterVolume(it) }
+                                onRepeatB = { viewModel.audioEngine.toggleRepeatMode(DeckId.B) },
+                                onToggleAutoFade = { viewModel.audioEngine.triggerAutoFade() },
+                                onCycleFadeTime = { viewModel.audioEngine.cycleFadeDuration() },
+                                onOpenFx = { viewModel.navigateTo(AppSection.DJ_EFFECTS) },
+                                onOpenSampler = { viewModel.navigateTo(AppSection.SAMPLER) },
+                                onToggleExpand = { viewModel.toggleExpandMixer() }
                             )
                         }
                     }
@@ -390,6 +446,55 @@ private fun BijoyMainStudioScaffold(viewModel: BijoyViewModel) {
                         viewModel = viewModel,
                         onExportBackup = { exportBackupLauncher.launch("bijoy_dj_backup.json") },
                         onRestoreBackup = { restoreBackupLauncher.launch(arrayOf("application/json", "*/*")) },
+                        onBack = { viewModel.navigateTo(AppSection.DJ_MIXER) }
+                    )
+
+                    AppSection.AI_REMIX_STUDIO -> AiSongRemixStudioScreen(
+                        viewModel = viewModel,
+                        onExportWav = { path, suggested ->
+                            pendingExportRecordingPath = path
+                            exportRecordingLauncher.launch(suggested)
+                        },
+                        onBack = { viewModel.navigateTo(AppSection.DJ_MIXER) }
+                    )
+
+                    AppSection.STEM_SEPARATOR -> StemSeparatorScreen(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateTo(AppSection.DJ_MIXER) }
+                    )
+
+                    AppSection.AI_AUTO_DJ -> AiAutoDjScreen(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateTo(AppSection.DJ_MIXER) }
+                    )
+
+                    AppSection.SAD_TO_DJ -> SadToDjConverterScreen(
+                        viewModel = viewModel,
+                        onExportWav = { path, suggested ->
+                            pendingExportRecordingPath = path
+                            exportRecordingLauncher.launch(suggested)
+                        },
+                        onBack = { viewModel.navigateTo(AppSection.DJ_MIXER) }
+                    )
+
+                    AppSection.AI_REMIX_GENERATOR -> AiRemixGeneratorScreen(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateTo(AppSection.DJ_MIXER) }
+                    )
+
+                    AppSection.AI_ASSISTANT -> BijoyAiAssistantScreen(
+                        viewModel = viewModel,
+                        onVoiceCommandClick = {
+                            val hasPerm = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.RECORD_AUDIO
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (hasPerm) {
+                                launchVoiceCommand()
+                            } else {
+                                voiceMicPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
                         onBack = { viewModel.navigateTo(AppSection.DJ_MIXER) }
                     )
 

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.ai.BijoyAiService
 import com.example.audio.*
 import com.example.database.*
 import com.example.sources.MusicSourceManager
@@ -20,6 +21,21 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
     val audioEngine = BijoyAudioEngine(application, recordingEngine)
     val sourceManager = MusicSourceManager(application)
     val backupManager = BackupManager(application, db)
+    val aiService = BijoyAiService()
+
+    val aiStudio by lazy {
+        AiStudioDelegate(
+            app = getApplication(),
+            scope = viewModelScope,
+            repository = repository,
+            audioEngine = audioEngine,
+            aiService = aiService,
+            onToast = { postToast(it) },
+            onNavigate = { navigateTo(it) },
+            onLoadSong = { deckId, song, autoPlay -> loadSongToDeck(deckId, song, autoPlay) },
+            onStartRecording = { title, mic, src -> startRecording(title, mic, src) }
+        )
+    }
 
     // Audio & Engine States
     val deckA: StateFlow<DeckState> = audioEngine.deckA
@@ -66,20 +82,30 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
             LayoutPreferenceEntity(id = 1, profileName = "Standard Studio", isActive = true)
         )
 
+    val savedLoops: StateFlow<List<SavedLoopEntity>> = repository.savedLoops
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _activeSfxPads = MutableStateFlow<Set<Int>>(emptySet())
+    private val _loopingSfxPads = MutableStateFlow<Set<Int>>(emptySet())
+    private val _padPitches = MutableStateFlow<Map<Int, Float>>(emptyMap())
     val sfxPads: StateFlow<List<SfxPadUi>> = combine(
         repository.samplerAssignments,
-        _activeSfxPads
-    ) { assignments, active ->
+        _activeSfxPads,
+        _loopingSfxPads,
+        _padPitches
+    ) { assignments, active, looping, pitches ->
         assignments.map { a ->
             SfxPadUi(
                 index = a.padIndex,
                 label = a.label,
                 colorHex = a.colorHex,
                 synthType = a.synthType,
+                category = SfxSamplerEngine.categoryForType(a.synthType),
                 customAudioUri = a.customAudioUri,
                 volume = a.volume,
-                isPlaying = a.padIndex in active
+                pitchRatio = pitches[a.padIndex] ?: 1.0f,
+                isPlaying = a.padIndex in active,
+                isLooping = a.padIndex in looping
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -136,9 +162,9 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
     fun loadSongToDeck(deckId: DeckId, song: SongEntity, autoPlay: Boolean = false) {
         viewModelScope.launch {
             val savedCues = repository.getHotCues(song.id)
-            val cuePoints = (0..3).map { slot ->
+            val cuePoints = (0..7).map { slot ->
                 val found = savedCues.find { it.slotIndex == slot }
-                HotCuePoint(slot, found?.positionMs, found?.label ?: "CUE ${slot + 1}")
+                HotCuePoint(slot, found?.positionMs, found?.label ?: "HC ${slot + 1}")
             }
 
             val decodedResult = if (song.isBuiltInSynth) {
@@ -157,6 +183,7 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
                     songId = song.id,
                     title = song.title,
                     artist = song.artist,
+                    musicalKey = song.musicalKey,
                     artworkResName = song.artworkResName,
                     decoded = decoded,
                     savedCues = cuePoints
@@ -177,9 +204,9 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun onHotCuePress(deckId: DeckId, slotIndex: Int) {
+    fun onHotCuePress(deckId: DeckId, slotIndex: Int, loopAfterJump: Boolean = false) {
         val deck = if (deckId == DeckId.A) deckA.value else deckB.value
-        val posMs = audioEngine.triggerHotCue(deckId, slotIndex)
+        val posMs = audioEngine.triggerHotCue(deckId, slotIndex, loopAfterJump)
         val songId = deck.songId
         if (songId != null && posMs != null) {
             viewModelScope.launch {
@@ -196,6 +223,73 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun onPerformancePadPress(deckId: DeckId, padIndex: Int) {
+        val deck = if (deckId == DeckId.A) deckA.value else deckB.value
+        when (deck.padMode) {
+            PerformancePadMode.HOT_CUE -> onHotCuePress(deckId, padIndex, loopAfterJump = false)
+            PerformancePadMode.SAMPLER -> {
+                val totalPads = sfxPads.value.size.coerceAtLeast(16)
+                val offset = (mixer.value.samplerBankIndex * 4 + padIndex) % totalPads
+                val pad = sfxPads.value.getOrNull(offset)
+                if (pad != null) triggerSfxPad(pad)
+            }
+            PerformancePadMode.ROLL -> {
+                val rollBeats = listOf(0.5f, 1f, 2f, 4f, 8f, 16f, 0.25f, 0.125f)
+                audioEngine.triggerRollPad(deckId, rollBeats.getOrElse(padIndex) { 1f })
+            }
+            PerformancePadMode.SLICER -> audioEngine.triggerSlicerPad(deckId, padIndex)
+            PerformancePadMode.LOOP -> {
+                val loopBeats = listOf(0.5f, 1f, 2f, 4f, 8f, 16f, 0.25f, 32f)
+                audioEngine.toggleAutoLoop(deckId, loopBeats.getOrElse(padIndex) { 4f })
+            }
+            PerformancePadMode.CUE_LOOP -> onHotCuePress(deckId, padIndex, loopAfterJump = true)
+        }
+    }
+
+    fun onPerformancePadLongPress(deckId: DeckId, padIndex: Int) {
+        val deck = if (deckId == DeckId.A) deckA.value else deckB.value
+        when (deck.padMode) {
+            PerformancePadMode.HOT_CUE, PerformancePadMode.CUE_LOOP -> {
+                onHotCueClear(deckId, padIndex)
+                postToast("Cleared Cue ${padIndex + 1} on Deck ${deckId.name}")
+            }
+            PerformancePadMode.SAMPLER -> {
+                val totalPads = sfxPads.value.size.coerceAtLeast(16)
+                val offset = (mixer.value.samplerBankIndex * 4 + padIndex) % totalPads
+                audioEngine.sfxEngine.stopPad(offset)
+                _activeSfxPads.value = audioEngine.sfxEngine.activePadIndices()
+            }
+            PerformancePadMode.LOOP -> {
+                val songId = deck.songId ?: return
+                val inMs = deck.loopInMs ?: return
+                val outMs = deck.loopOutMs ?: return
+                viewModelScope.launch {
+                    repository.saveLoop(songId, inMs, outMs, deck.autoLoopBeats)
+                    postToast("Saved loop to track memory")
+                }
+            }
+            else -> audioEngine.exitLoop(deckId)
+        }
+    }
+
+    fun saveActiveLoop(deckId: DeckId) {
+        val deck = if (deckId == DeckId.A) deckA.value else deckB.value
+        val songId = deck.songId ?: return
+        val inMs = deck.loopInMs ?: deck.positionMs
+        val outMs = deck.loopOutMs ?: (inMs + ((60000f / deck.effectiveBpm.coerceAtLeast(60f)) * deck.autoLoopBeats).toLong())
+        viewModelScope.launch {
+            repository.saveLoop(songId, inMs, outMs, deck.autoLoopBeats)
+            postToast("Saved ${deck.autoLoopBeats}-beat loop for ${deck.title}")
+        }
+    }
+
+    fun recallSavedLoop(deckId: DeckId, loop: SavedLoopEntity) {
+        val deck = if (deckId == DeckId.A) deckA.value else deckB.value
+        val dur = deck.durationMs.coerceAtLeast(1L)
+        audioEngine.seekToRatio(deckId, (loop.startMs.toFloat() / dur).coerceIn(0f, 0.99f))
+        audioEngine.toggleAutoLoop(deckId, loop.beatLength)
+    }
+
     fun updateManualBpm(deckId: DeckId, newBpm: Float) {
         audioEngine.setManualBpm(deckId, newBpm)
         val songId = (if (deckId == DeckId.A) deckA.value else deckB.value).songId
@@ -204,11 +298,48 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun loadAdjacentTrack(deckId: DeckId, delta: Int) {
+        val songs = allSongs.value
+        if (songs.isEmpty()) return
+        val currentId = (if (deckId == DeckId.A) deckA.value else deckB.value).songId
+        val curIdx = songs.indexOfFirst { it.id == currentId }.let { if (it < 0) 0 else it }
+        val nextIdx = (curIdx + delta + songs.size) % songs.size
+        val target = songs[nextIdx]
+        val wasPlaying = (if (deckId == DeckId.A) deckA.value else deckB.value).isPlaying
+        loadSongToDeck(deckId, target, autoPlay = wasPlaying)
+    }
+
+    private val _sampleMasterVolume = MutableStateFlow(1.0f)
+    val sampleMasterVolume: StateFlow<Float> = _sampleMasterVolume.asStateFlow()
+
+    fun setSampleMasterVolume(vol: Float) {
+        val clamped = vol.coerceIn(0f, 1.5f)
+        _sampleMasterVolume.value = clamped
+        audioEngine.sfxEngine.masterSampleVolume = clamped
+    }
+
     // ==================== SFX SAMPLER ====================
 
     fun triggerSfxPad(pad: SfxPadUi) {
-        audioEngine.sfxEngine.triggerPad(pad.index, pad.volume)
+        audioEngine.sfxEngine.triggerPad(pad.index, pad.volume, pad.isLooping, pad.pitchRatio)
         _activeSfxPads.value = audioEngine.sfxEngine.activePadIndices()
+    }
+
+    fun setSfxPadPitch(padIndex: Int, pitchRatio: Float) {
+        val clamped = pitchRatio.coerceIn(0.5f, 2.0f)
+        audioEngine.sfxEngine.setPadPitch(padIndex, clamped)
+        _padPitches.update { it + (padIndex to clamped) }
+    }
+
+    fun stopSfxPad(padIndex: Int) {
+        audioEngine.sfxEngine.stopPad(padIndex)
+        _activeSfxPads.value = audioEngine.sfxEngine.activePadIndices()
+    }
+
+    fun toggleSfxPadLoop(padIndex: Int) {
+        val isLoop = audioEngine.sfxEngine.togglePadLoop(padIndex)
+        _loopingSfxPads.value = audioEngine.sfxEngine.loopingPads
+        postToast(if (isLoop) "Pad ${padIndex + 1} loop enabled" else "Pad ${padIndex + 1} loop disabled")
     }
 
     fun stopAllSfx() {
@@ -216,11 +347,38 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
         _activeSfxPads.value = emptySet()
     }
 
-    fun updateSfxPadConfig(padIndex: Int, newLabel: String, newVolume: Float) {
+    fun switchSamplerBank(bankIdx: Int) {
+        val clamped = bankIdx.coerceIn(0, 3)
+        audioEngine.setSamplerBank(clamped)
+        postToast("Sampler Bank ${('A' + clamped)} selected")
+    }
+
+    fun updateSfxPadConfig(padIndex: Int, newLabel: String, newVolume: Float, pitchRatio: Float = 1.0f) {
+        setSfxPadPitch(padIndex, pitchRatio)
         viewModelScope.launch {
             val current = repository.db.presetSettingsLayoutDao().getSamplerAssignmentsOnce()
                 .find { it.padIndex == padIndex } ?: return@launch
             repository.updateSamplerPad(current.copy(label = newLabel.trim(), volume = newVolume))
+        }
+    }
+
+    fun saveCurrentEqPreset(name: String, deckId: DeckId) {
+        val deck = if (deckId == DeckId.A) deckA.value else deckB.value
+        viewModelScope.launch {
+            repository.saveUserEqPreset(name, deck.bassDb, deck.midDb, deck.trebleDb, deck.filterCutoff)
+            postToast("Saved custom EQ preset: $name")
+        }
+    }
+
+    fun applyCustomDjPreset(deckId: DeckId, preset: DjPresetEntity) {
+        audioEngine.applyCustomEqValues(deckId, preset.bassDb, preset.midDb, preset.trebleDb)
+        postToast("Applied preset: ${preset.name}")
+    }
+
+    fun deleteCustomDjPreset(preset: DjPresetEntity) {
+        viewModelScope.launch {
+            repository.deleteUserPreset(preset)
+            postToast("Deleted preset: ${preset.name}")
         }
     }
 
@@ -240,11 +398,31 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun removeCustomSampleFromPad(padIndex: Int) {
+        viewModelScope.launch {
+            audioEngine.sfxEngine.clearCustomSample(padIndex)
+            val current = repository.db.presetSettingsLayoutDao().getSamplerAssignmentsOnce()
+                .find { it.padIndex == padIndex }
+            if (current != null) {
+                repository.updateSamplerPad(current.copy(customAudioUri = null))
+            }
+            postToast("Restored default studio sound for Pad ${padIndex + 1}")
+        }
+    }
+
     // ==================== RECORDING STUDIO ====================
 
-    fun startRecording(customTitle: String? = null, includeMic: Boolean = false) {
-        val title = recordingEngine.startRecording(customTitle, includeMic)
-        postToast("Recording master mix: $title")
+    fun setRecordSource(source: RecordSource) {
+        recordingEngine.setRecordSource(source)
+    }
+
+    fun startRecording(
+        customTitle: String? = null,
+        includeMic: Boolean = false,
+        source: RecordSource = recordingState.value.source
+    ) {
+        val title = recordingEngine.startRecording(customTitle, includeMic, source)
+        postToast("Recording (${source.displayName}): $title")
     }
 
     fun pauseRecording() = recordingEngine.pauseRecording()
@@ -263,6 +441,42 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
                 )
             )
             postToast("Saved WAV recording: ${completed.title}")
+        }
+    }
+
+    fun renameRecording(recording: RecordingEntity, newTitle: String) {
+        if (newTitle.isBlank()) return
+        viewModelScope.launch {
+            val clean = newTitle.trim()
+            val renamedFile = recordingEngine.renameRecordingFile(recording.filePath, clean).getOrNull()
+            if (renamedFile != null) {
+                repository.db.recordingDao().insertRecording(
+                    recording.copy(title = clean, filePath = renamedFile.absolutePath)
+                )
+            } else {
+                repository.renameRecording(recording.id, clean)
+            }
+            postToast("Renamed recording to $clean")
+        }
+    }
+
+    fun exportRecordingAsM4a(recording: RecordingEntity) {
+        viewModelScope.launch {
+            postToast("Encoding AAC/M4A...")
+            recordingEngine.exportWavAsM4a(recording.filePath)
+                .onSuccess { m4aFile ->
+                    repository.saveRecording(
+                        RecordingEntity(
+                            title = "${recording.title} (AAC)",
+                            filePath = m4aFile.absolutePath,
+                            format = "M4A",
+                            durationMs = recording.durationMs,
+                            fileSizeBytes = m4aFile.length()
+                        )
+                    )
+                    postToast("Exported M4A: ${m4aFile.name}")
+                }
+                .onFailure { postToast("M4A encode unavailable: ${it.localizedMessage}") }
         }
     }
 
@@ -416,14 +630,55 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val _customFolders = MutableStateFlow<List<String>>(emptyList())
+    val customFolders: StateFlow<List<String>> = _customFolders.asStateFlow()
+
+    fun createFolder(name: String) {
+        val clean = name.trim()
+        if (clean.isNotBlank() && clean !in _customFolders.value) {
+            _customFolders.value = _customFolders.value + clean
+            postToast("Created folder: $clean")
+        }
+    }
+
+    fun renameFolder(oldName: String, newName: String) {
+        val clean = newName.trim()
+        if (clean.isBlank()) return
+        _customFolders.value = _customFolders.value.map { if (it == oldName) clean else it }
+        viewModelScope.launch {
+            repository.renameFolder(oldName, clean)
+            postToast("Renamed folder to $clean")
+        }
+    }
+
+    fun deleteFolder(name: String) {
+        _customFolders.value = _customFolders.value.filterNot { it == name }
+        viewModelScope.launch {
+            repository.renameFolder(name, "Local Music")
+            postToast("Folder removed; tracks moved to Local Music")
+        }
+    }
+
     fun updateSettings(transform: (UserSettingsEntity) -> UserSettingsEntity) {
         viewModelScope.launch {
             val next = transform(userSettings.value)
             repository.saveSettings(next)
             audioEngine.setJogSensitivity(next.jogSensitivity)
+            audioEngine.setBufferFrames(next.bufferSizeFrames)
             val curve = runCatching { CrossfaderCurve.valueOf(next.crossfaderCurve) }
                 .getOrDefault(CrossfaderCurve.CONSTANT_POWER)
             audioEngine.setCrossfaderCurve(curve)
+        }
+    }
+
+    fun restoreDefaultSettings() {
+        viewModelScope.launch {
+            val defaults = UserSettingsEntity()
+            repository.saveSettings(defaults)
+            audioEngine.setJogSensitivity(defaults.jogSensitivity)
+            audioEngine.setBufferFrames(defaults.bufferSizeFrames)
+            audioEngine.setCrossfaderCurve(CrossfaderCurve.CONSTANT_POWER)
+            postToast("Restored default BIJOY DJ settings")
         }
     }
 
@@ -454,6 +709,7 @@ class BijoyViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        aiStudio.release()
         audioEngine.stopEngine()
     }
 }

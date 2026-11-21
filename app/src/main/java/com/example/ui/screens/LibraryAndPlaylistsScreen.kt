@@ -90,9 +90,13 @@ fun MusicLibraryScreen(
             }
         )
     }
+    val customFolders by viewModel.customFolders.collectAsStateWithLifecycle()
+    val mergedFolders = remember(folders, customFolders) { (folders + customFolders).distinct().sorted() }
     var selectedFolder by remember { mutableStateOf<String?>(null) }
     var selectedPlaylist by remember { mutableStateOf<PlaylistEntity?>(null) }
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
+    var showCreateFolderDialog by remember { mutableStateOf(false) }
+    var folderToRename by remember { mutableStateOf<String?>(null) }
     var songToAddToPlaylist by remember { mutableStateOf<SongEntity?>(null) }
     var songToDelete by remember { mutableStateOf<SongEntity?>(null) }
 
@@ -112,7 +116,7 @@ fun MusicLibraryScreen(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     modifier = Modifier.testTag("import_music_btn")
                 ) {
-                    Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(BijoyIcons.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Import Audio", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
@@ -120,7 +124,7 @@ fun MusicLibraryScreen(
         )
 
         // Category Tabs
-        val tabs = listOf("ALL", "FAVORITES", "PLAYLISTS", "FOLDERS", "ARTISTS", "ALBUMS", "HISTORY")
+        val tabs = listOf("ALL", "REMIXES", "FAVORITES", "PLAYLISTS", "FOLDERS", "ARTISTS", "ALBUMS", "HISTORY")
         LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
@@ -146,7 +150,7 @@ fun MusicLibraryScreen(
         }
 
         // Search + Sort Row
-        if (libraryTab == "ALL" || libraryTab == "FAVORITES") {
+        if (libraryTab == "ALL" || libraryTab == "FAVORITES" || libraryTab == "REMIXES") {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -207,7 +211,7 @@ fun MusicLibraryScreen(
                                 .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.History, contentDescription = null, tint = DeckACyan)
+                            Icon(BijoyIcons.History, contentDescription = null, tint = DeckACyan)
                             Spacer(Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(item.songTitle, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -254,7 +258,7 @@ fun MusicLibraryScreen(
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.QueueMusic, contentDescription = null, tint = LedPurple)
+                                Icon(BijoyIcons.QueueMusic, contentDescription = null, tint = LedPurple)
                                 Spacer(Modifier.width(10.dp))
                                 Text(pl.name, color = TextPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                                 IconButton(onClick = { scope.launch { viewModel.repository.deletePlaylist(pl.id) } }) {
@@ -295,6 +299,12 @@ fun MusicLibraryScreen(
                         onToggleFav = { s -> scope.launch { viewModel.repository.toggleFavorite(s.id, s.id in favoriteIds) } },
                         onAddToPlaylist = { songToAddToPlaylist = it },
                         onDelete = { s -> scope.launch { viewModel.repository.removeSongFromPlaylist(pl.id, s.id) } },
+                        onMoveUp = { idx ->
+                            if (idx > 0) scope.launch { viewModel.repository.swapPlaylistSongs(pl.id, plSongs, idx, idx - 1) }
+                        },
+                        onMoveDown = { idx ->
+                            if (idx < plSongs.lastIndex) scope.launch { viewModel.repository.swapPlaylistSongs(pl.id, plSongs, idx, idx + 1) }
+                        },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -302,24 +312,50 @@ fun MusicLibraryScreen(
 
             "FOLDERS" -> {
                 if (selectedFolder == null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("DJ Music Folders (${mergedFolders.size})", color = TextSecondary, fontSize = 12.sp)
+                        Button(
+                            onClick = { showCreateFolderDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = DeckBGold, contentColor = ChassisVoid),
+                            modifier = Modifier.testTag("create_folder_btn")
+                        ) {
+                            Icon(BijoyIcons.CreateNewFolder, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("New Folder", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        items(folders) { folder ->
+                        items(mergedFolders) { folder ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(ChassisCard)
                                     .clickable { selectedFolder = folder }
-                                    .padding(12.dp),
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Folder, contentDescription = null, tint = DeckBGold)
+                                Icon(BijoyIcons.Folder, contentDescription = null, tint = DeckBGold)
                                 Spacer(Modifier.width(10.dp))
-                                Text(folder, color = TextPrimary, fontWeight = FontWeight.Bold)
+                                Text(folder, color = TextPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                IconButton(onClick = { folderToRename = folder }, modifier = Modifier.size(30.dp)) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Rename Folder", tint = DeckACyan, modifier = Modifier.size(17.dp))
+                                }
+                                if (folder != "Local Music" && folder != "BIJOY Studio Tracks") {
+                                    IconButton(onClick = { viewModel.deleteFolder(folder) }, modifier = Modifier.size(30.dp)) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete Folder", tint = LedRed, modifier = Modifier.size(17.dp))
+                                    }
+                                }
                             }
                         }
                     }
@@ -379,7 +415,7 @@ fun MusicLibraryScreen(
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Album, contentDescription = null, tint = DeckBOrange)
+                            Icon(BijoyIcons.Album, contentDescription = null, tint = DeckBOrange)
                             Spacer(Modifier.width(10.dp))
                             Column {
                                 Text(al.title, color = TextPrimary, fontWeight = FontWeight.Bold)
@@ -391,7 +427,11 @@ fun MusicLibraryScreen(
             }
 
             else -> {
-                val baseList = if (libraryTab == "FAVORITES") favoriteSongs else allSongs
+                val baseList = when (libraryTab) {
+                    "FAVORITES" -> favoriteSongs
+                    "REMIXES" -> allSongs.filter { it.sourceType == "REMIX" || it.folderName == "AI Remixes" }
+                    else -> allSongs
+                }
                 val filtered = baseList.filter {
                     searchQuery.isBlank() ||
                         it.title.contains(searchQuery, ignoreCase = true) ||
@@ -410,6 +450,15 @@ fun MusicLibraryScreen(
                     favoriteIds = favoriteIds,
                     onLoadA = { viewModel.loadSongToDeck(DeckId.A, it); onBack() },
                     onLoadB = { viewModel.loadSongToDeck(DeckId.B, it); onBack() },
+                    onOpenRemix = { s ->
+                        viewModel.aiStudio.selectSourceSong(s)
+                        viewModel.navigateTo(AppSection.AI_REMIX_STUDIO)
+                    },
+                    onOpenStems = { s ->
+                        viewModel.aiStudio.selectSourceSong(s)
+                        viewModel.aiStudio.separateTrackStems(s)
+                        viewModel.navigateTo(AppSection.STEM_SEPARATOR)
+                    },
                     onToggleFav = { s -> scope.launch { viewModel.repository.toggleFavorite(s.id, s.id in favoriteIds) } },
                     onAddToPlaylist = { songToAddToPlaylist = it },
                     onDelete = { songToDelete = it },
@@ -505,6 +554,59 @@ fun MusicLibraryScreen(
             dismissButton = { TextButton(onClick = { songToDelete = null }) { Text("Cancel") } }
         )
     }
+    // Create Folder Dialog
+    if (showCreateFolderDialog) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCreateFolderDialog = false },
+            containerColor = ChassisDark,
+            title = { Text("Create DJ Folder", color = TextPrimary) },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = { Text("Folder name...") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (name.isNotBlank()) {
+                        viewModel.createFolder(name)
+                        showCreateFolderDialog = false
+                    }
+                }) { Text("Create") }
+            },
+            dismissButton = { TextButton(onClick = { showCreateFolderDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    // Rename Folder Dialog
+    folderToRename?.let { oldName ->
+        var newName by remember(oldName) { mutableStateOf(oldName) }
+        AlertDialog(
+            onDismissRequest = { folderToRename = null },
+            containerColor = ChassisDark,
+            title = { Text("Rename Folder", color = TextPrimary) },
+            text = {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("Folder Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (newName.isNotBlank()) {
+                        viewModel.renameFolder(oldName, newName)
+                        folderToRename = null
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { folderToRename = null }) { Text("Cancel") } }
+        )
+    }
 }
 
 @Composable
@@ -516,6 +618,10 @@ private fun SongListSection(
     onToggleFav: (SongEntity) -> Unit,
     onAddToPlaylist: (SongEntity) -> Unit,
     onDelete: (SongEntity) -> Unit,
+    onOpenRemix: ((SongEntity) -> Unit)? = null,
+    onOpenStems: ((SongEntity) -> Unit)? = null,
+    onMoveUp: ((Int) -> Unit)? = null,
+    onMoveDown: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (songs.isEmpty()) {
@@ -529,7 +635,8 @@ private fun SongListSection(
         contentPadding = PaddingValues(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        items(songs, key = { it.id }) { song ->
+        items(songs.size, key = { idx -> songs[idx].id }) { index ->
+            val song = songs[index]
             val isFav = song.id in favoriteIds
             Row(
                 modifier = Modifier
@@ -550,7 +657,7 @@ private fun SongListSection(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "${song.artist} • ${String.format("%.0f", song.bpm)} BPM • ${formatTimeMs(song.durationMs)} • ${song.format}",
+                        text = "${song.artist} • ${String.format("%.0f", song.bpm)} BPM • ${song.musicalKey} • ${formatTimeMs(song.durationMs)} • ${song.format}",
                         color = TextSecondary,
                         fontSize = 10.sp,
                         fontFamily = JetBrainsMonoFontFamily,
@@ -559,8 +666,42 @@ private fun SongListSection(
                     )
                 }
 
-                // Load to Deck A / Deck B buttons
+                // Load to Deck A / Deck B buttons + AI Remix / Stems + optional Reorder arrows
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (onMoveUp != null && index > 0) {
+                        IconButton(onClick = { onMoveUp(index) }, modifier = Modifier.size(28.dp)) {
+                            Icon(BijoyIcons.ArrowUpward, contentDescription = "Move Up", tint = DeckACyan, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    if (onMoveDown != null && index < songs.lastIndex) {
+                        IconButton(onClick = { onMoveDown(index) }, modifier = Modifier.size(28.dp)) {
+                            Icon(BijoyIcons.ArrowDownward, contentDescription = "Move Down", tint = DeckACyan, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    if (onOpenRemix != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(LedPurple.copy(alpha = 0.22f))
+                                .border(1.dp, LedPurple, RoundedCornerShape(6.dp))
+                                .clickable { onOpenRemix(song) }
+                                .padding(horizontal = 7.dp, vertical = 5.dp)
+                        ) {
+                            Text("REMIX", color = LedPurple, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+                        }
+                    }
+                    if (onOpenStems != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(DeckBGold.copy(alpha = 0.18f))
+                                .border(1.dp, DeckBGold, RoundedCornerShape(6.dp))
+                                .clickable { onOpenStems(song) }
+                                .padding(horizontal = 7.dp, vertical = 5.dp)
+                        ) {
+                            Text("STEMS", color = DeckBGold, fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+                        }
+                    }
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
@@ -585,17 +726,17 @@ private fun SongListSection(
                     }
                     IconButton(onClick = { onToggleFav(song) }, modifier = Modifier.size(30.dp)) {
                         Icon(
-                            imageVector = if (isFav) Icons.Default.Star else Icons.Default.StarBorder,
+                            imageVector = if (isFav) Icons.Default.Star else BijoyIcons.StarBorder,
                             contentDescription = "Favorite",
                             tint = if (isFav) DeckBGold else TextMuted,
                             modifier = Modifier.size(18.dp)
                         )
                     }
                     IconButton(onClick = { onAddToPlaylist(song) }, modifier = Modifier.size(30.dp)) {
-                        Icon(Icons.Default.PlaylistAdd, contentDescription = "Add to Playlist", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                        Icon(BijoyIcons.PlaylistAdd, contentDescription = "Add to Playlist", tint = TextSecondary, modifier = Modifier.size(18.dp))
                     }
                     IconButton(onClick = { onDelete(song) }, modifier = Modifier.size(30.dp)) {
-                        Icon(Icons.Default.DeleteOutline, contentDescription = "Remove", tint = TextMuted, modifier = Modifier.size(17.dp))
+                        Icon(BijoyIcons.DeleteOutline, contentDescription = "Remove", tint = TextMuted, modifier = Modifier.size(17.dp))
                     }
                 }
             }
