@@ -1,0 +1,6 @@
+{
+  "name": "BIJOY DJ",
+  "description": "Professional dual-deck Android DJ mixing studio with real-time audio engine, Pioneer-inspired controller, BPM sync, waveforms, SFX sampler, recording studio, and customizable layouts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
